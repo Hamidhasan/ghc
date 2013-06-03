@@ -6,12 +6,12 @@
 
 
 ## Week 1: June 3 - June 7
-=========================
-### Monday, June 3
+
+#### Monday, June 3
 
 Today my advisor and I talked about the first major three steps of the project.
 
-**1. Add a new node/token/expression to the Abstract Syntax, so that whatever is parsed has a corresponding abstract syntax node to parse to. **
+**1. Add a new node/token/expression to the Abstract Syntax, so that whatever is parsed has a corresponding abstract syntax node to parse to.**
 
 While looking through the files, I believe the type of the this node will be a
 "HsExpr.HsExpr". All of the abstract syntax files are in the ghc/compiler/hsSyn/
@@ -21,7 +21,7 @@ these files to modify and how to do so.
 A good summary of the compiler in general is located in the CoreSyn.lhs file, 
 towards the top. 
 
-** 2. Try to figure out the correct syntax to denote type application, then modify parser to accept the new syntax correctly.**
+**2. Try to figure out the correct syntax to denote type application, then modify parser to accept the new syntax correctly.**
 
 In order for this to be completed, we need to decide on what syntax is best. My
 advisor outlined a couple of suggestions, each of which had strengths and 
@@ -37,7 +37,7 @@ my own page): http://hackage.haskell.org/trac/ghc/wiki/ExplicitTypeApplication
 
 Link to feature-request ticket: http://hackage.haskell.org/trac/ghc/ticket/4466
 
-** 3. Assemble a test suite that demonstrates the semantics of using explicit type application, including corner cases.
+**3. Assemble a test suite that demonstrates the semantics of using explicit type application, including corner cases.**
 
 There are various situations that need to be dealt with, and I have not thought 
 thoroughly about what cases there are.

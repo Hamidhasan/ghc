@@ -9,11 +9,11 @@
 
 #### Monday, June 3
 
-Today my advisor and I talked about the first major three steps of the project.
+Today my advisor and I talked about the first three major steps of the project.
 
 **1. Add a new node/token/expression to the Abstract Syntax, so that whatever is parsed has a corresponding abstract syntax node to parse to.**
 
-While looking through the files, I believe the type of the this node will be a
+While looking through the files, I believe the type of this node will be a
 "HsExpr.HsExpr". All of the abstract syntax files are in the ghc/compiler/hsSyn/
 folder, however there are several, and my current task is to figure out which of
 these files to modify and how to do so.

@@ -188,6 +188,13 @@ data HsExpr id
                 PostTcType      -- type of elements of the parallel array
                 [LHsExpr id]
 
+  -- Explicit Type Application - Hamidhasan.
+  | ExplicitTyApp 
+                (LHsExpr id)       -- The outer function that is applied.
+                [PostTcType]       -- The explicit type expression
+                [(LHsExpr id)]     -- The function arguments
+                                   -- See Note [Explicit Type App]
+
   -- Record construction
   | RecordCon   (Located id)       -- The constructor.  After type checking
                                    -- it's the dataConWrapId of the constructor
@@ -367,6 +374,13 @@ whereas that would not be possible using a all to a polymorphic function
 
 So we use Nothing to mean "use the old built-in typing rule".
 
+Note [Explicit Type App]
+~~~~~~~~~~~~~~~~~~~~~~~~
+Explicit type application is allows a programmer to explicitly declare the type
+of a polymorphic function's arguments, rather then letting them be inferred
+by the type checker. This is currently a work-in-progress feature, authored by
+Hamidhasan Ahmed.
+
 \begin{code}
 instance OutputableBndr id => Outputable (HsExpr id) where
     ppr expr = pprExpr expr
@@ -466,6 +480,10 @@ ppr_expr (ExplicitTuple exprs boxity)
     punc (Present {} : _) = comma <> space
     punc (Missing {} : _) = comma
     punc []               = empty
+
+
+ppr_expr (ExplicitTyApp func types vars)
+  = panic "Hamidhasan: Need to implement pretty printing after syntax!"
 
 --avoid using PatternSignatures for stage1 code portability
 ppr_expr (HsLam matches)

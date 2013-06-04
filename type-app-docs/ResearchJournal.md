@@ -49,3 +49,10 @@ arguments to "inferred" type declarations is nontrivial: are the type arguments
 given left to right, matching the inferred declaration? In addition, getting this
 to work with "type synonyms" may be another nontrivial step.
 
+#### Tuesday, June 4
+
+Today I spent most of the time trying to digest and understand how GHC handles Haskell's abstract syntax.
+
+The most useful information relating specifically to abstract syntax is located here:
+http://hackage.haskell.org/trac/ghc/wiki/Commentary/Compiler/HsSynType
+

@@ -52,7 +52,11 @@ to work with "type synonyms" may be another nontrivial step.
 #### Tuesday, June 4
 
 Today I spent most of the time trying to digest and understand how GHC handles Haskell's abstract syntax.
+I also read up on GHC coding conventions, style, and other "Before you begin" material.
 
 The most useful information relating specifically to abstract syntax is located here:
 http://hackage.haskell.org/trac/ghc/wiki/Commentary/Compiler/HsSynType
 
+I was able to add a small case to HsExpr, but I am not sure of its correctness yet. Furthermore, I may 
+need to add other cases and will need to be able to pretty print it (but I need to know its syntax before
+I can pretty print). 

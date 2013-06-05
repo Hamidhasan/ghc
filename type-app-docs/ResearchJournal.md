@@ -60,3 +60,16 @@ http://hackage.haskell.org/trac/ghc/wiki/Commentary/Compiler/HsSynType
 I was able to add a small case to HsExpr, but I am not sure of its correctness yet. Furthermore, I may 
 need to add other cases and will need to be able to pretty print it (but I need to know its syntax before
 I can pretty print). 
+
+#### Wednesday, June 5
+
+I made some more progress on the Abstract Syntax as well as the parser today. I read through almost the entire
+Parser.y.pp file, and was not too lost on the changes.
+
+Also, my advisor and I discussed some possible applications and related topics. In particular,
+there exists explicit type application for *pattern matching*, but this feature is not really
+a part of what I am doing (and has less priority for type application when calling polymorphic functions).
+
+Incidentally, I found an interesting tidbit in the HsExpr syntax. One of the cases is on Line 315, which 
+uses explicit type application [in generic programming?]; it may be useful for my project to re-use this
+piece of abstract syntax (no parser rule generates this syntax though).

@@ -1498,6 +1498,11 @@ fexp    :: { LHsExpr RdrName }
         : fexp aexp                             { LL $ HsApp $1 $2 }
         | aexp                                  { $1 }
 
+-- Hamidhasan: here is the as pattern. figure out what all these
+-- fexp and aexp mean.
+-- I think fexp stands for "function expression"
+-- and aexp stands for ... application expression? not sure. 
+
 aexp    :: { LHsExpr RdrName }
         : qvar '@' aexp                 { LL $ EAsPat $1 $3 }
         | '~' aexp                      { LL $ ELazyPat $2 }
@@ -1552,6 +1557,9 @@ aexp2   :: { LHsExpr RdrName }
 
         -- arrow notation extension
         | '(|' aexp2 cmdargs '|)'       { LL $ HsArrForm $2 Nothing (reverse $3) }
+
+             --Hamidhasan: I believe something needs to be added here for
+             --explicit type application. 
 
 cmdargs :: { [LHsCmdTop RdrName] }
         : cmdargs acmd                  { $2 : $1 }

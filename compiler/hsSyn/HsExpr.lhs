@@ -313,7 +313,8 @@ data HsExpr id
   | ELazyPat    (LHsExpr id) -- ~ pattern
 
   | HsType      (LHsType id) -- Explicit type argument; e.g  f {| Int |} x y
-
+                             -- Hamidhasan: Is this what I need to implement?
+                             -- Or at least the HsSyn version of what is needed.
   ---------------------------------------
   -- Finally, HsWrap appears only in typechecker output
 

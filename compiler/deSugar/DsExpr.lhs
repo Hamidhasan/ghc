@@ -602,7 +602,7 @@ dsExpr (EWildPat      {})  = panic "dsExpr:EWildPat"
 dsExpr (EAsPat        {})  = panic "dsExpr:EAsPat"
 dsExpr (EViewPat      {})  = panic "dsExpr:EViewPat"
 dsExpr (ELazyPat      {})  = panic "dsExpr:ELazyPat"
-dsExpr (HsType        {})  = panic "dsExpr:HsType"
+dsExpr (ETypeApp      {})  = panic "dsExpr:ETypeApp" --Hamidhasan TODO: check.
 dsExpr (HsDo          {})  = panic "dsExpr:HsDo"
 
 

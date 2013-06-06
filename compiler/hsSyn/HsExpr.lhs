@@ -189,10 +189,10 @@ data HsExpr id
                 [LHsExpr id]
 
   -- Explicit Type Application - Hamidhasan.
-  | ExplicitTyApp 
-                (LHsExpr id)       -- The outer function that is applied.
-                [PostTcType]       -- The explicit type expression
-                [(LHsExpr id)]     -- The function arguments
+  --  ExplicitTyApp 
+  --              (LHsExpr id)       -- The outer function that is applied.
+  --              [PostTcType]       -- The explicit type expression
+  --              [(LHsExpr id)]     -- The function arguments
                                    -- See Note [Explicit Type App]
 
   -- Record construction
@@ -312,9 +312,12 @@ data HsExpr id
 
   | ELazyPat    (LHsExpr id) -- ~ pattern
 
-  | HsType      (LHsType id) -- Explicit type argument; e.g  f {| Int |} x y
-                             -- Hamidhasan: Is this what I need to implement?
+  | ETypeApp    (LHsType id) -- Explicit type argument; e.g  f {| Int |} x y
+                (LHsExpr id) -- Hamidhasan: Is this what I need to implement?
                              -- Or at least the HsSyn version of what is needed.
+    -- Renamed from HsType -> ETypeApp, to match above.
+    -- However, this is probably not going to be "temporary" for the renamer;
+    -- it will propogate until it hits the core.
   ---------------------------------------
   -- Finally, HsWrap appears only in typechecker output
 
@@ -483,8 +486,8 @@ ppr_expr (ExplicitTuple exprs boxity)
     punc []               = empty
 
 
-ppr_expr (ExplicitTyApp func types vars)
-  = panic "Hamidhasan: Need to implement pretty printing after syntax!"
+--ppr_expr (ExplicitTyApp func types vars)
+--  = panic "Hamidhasan: Need to implement pretty printing after syntax!"
 
 --avoid using PatternSignatures for stage1 code portability
 ppr_expr (HsLam matches)
@@ -553,7 +556,8 @@ ppr_expr (HsSCC lbl expr)
           pprParendExpr expr ]
 
 ppr_expr (HsWrap co_fn e) = pprHsWrapper (pprExpr e) co_fn
-ppr_expr (HsType id)      = ppr id
+ppr_expr (ETypeApp ty id)      = char '{' <> ppr ty <> char '}' <> ppr id
+                                 -- Hamidhasan TODO: Fix once syntax is finalized
 
 ppr_expr (HsSpliceE s)       = pprSplice s
 ppr_expr (HsBracket b)       = pprHsBracket b

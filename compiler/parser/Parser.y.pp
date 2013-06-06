@@ -1506,6 +1506,7 @@ fexp    :: { LHsExpr RdrName }
 aexp    :: { LHsExpr RdrName }
         : qvar '@' aexp                 { LL $ EAsPat $1 $3 }
         | '~' aexp                      { LL $ ELazyPat $2 }
+        | '{' type '}' aexp             { LL $ ETypeApp $2 $4 } -- Exp. Type App
         | aexp1                 { $1 }
 
 aexp1   :: { LHsExpr RdrName }

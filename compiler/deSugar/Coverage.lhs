@@ -583,7 +583,7 @@ addTickHsExpr (HsWrap w e) =
                 (return w)
                 (addTickHsExpr e)       -- explicitly no tick on inside
 
-addTickHsExpr e@(HsType _) = return e
+addTickHsExpr e@(ETypeApp _ _) = return e   --Hamidhasan TODO: fix this?
 addTickHsExpr (HsUnboundVar {}) = panic "addTickHsExpr.HsUnboundVar"
 
 -- Others dhould never happen in expression content.

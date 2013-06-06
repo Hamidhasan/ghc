@@ -1112,6 +1112,8 @@ btype :: { LHsType RdrName }
         : btype atype                   { LL $ HsAppTy $1 $2 }
         | atype                         { $1 }
 
+-- Hamidhasan - in order to implement record style syntax, may need to do
+-- something here. but I dont think so
 atype :: { LHsType RdrName }
         : ntgtycon                       { L1 (HsTyVar (unLoc $1)) }      -- Not including unit tuples
         | tyvar                          { L1 (HsTyVar (unLoc $1)) }      -- (See Note [Unit tuples])
@@ -1503,7 +1505,12 @@ hpc_annot :: { Located (FastString,(Int,Int),(Int,Int)) }
 
 fexp    :: { LHsExpr RdrName }
         : fexp aexp                             { LL $ HsApp $1 $2 }
+        | fexp '@' etypes                       { LL $ HsApp $1 $3 }  
         | aexp                                  { $1 }
+
+etypes  :: { LHsExpr RdrName }
+        : '{' type '}' etypes                  { LL $ ETypeApp $2 $4 }
+        | '{' type '}' aexp2                   { LL $ ETypeApp $2 $4 }
 
 -- Hamidhasan: here is the as pattern. figure out what all these
 -- fexp and aexp mean.

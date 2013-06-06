@@ -7,15 +7,14 @@
 module Main where
 import Prelude
 
-x = True
-
-y = 2 + 5
-
 f :: a -> b -> (a,b)
-f x y = (x, y)
+f u v = (u, v)
 
 g :: a -> a
-g x = x
+g u = u
+
+data Foo = Foo { first :: Int, second :: Int} deriving Show
 
 main :: IO ()
-main = g {|Int|} y
+main = let x = 5 in
+       print $ g { Int } x

@@ -73,3 +73,23 @@ a part of what I am doing (and has less priority for type application when calli
 Incidentally, I found an interesting tidbit in the HsExpr syntax. One of the cases is on Line 315, which 
 uses explicit type application [in generic programming?]; it may be useful for my project to re-use this
 piece of abstract syntax (no parser rule generates this syntax though).
+
+
+#### Thursday, June 6
+
+I think I have more or less completed the Abstract Syntax piece that needs to be
+implemented in the compiler. I added a new node, ETypeApp, that has a type and
+another expression that follows so it can be chained (you can multiple explicit
+type applications).
+
+However, now I am working on the parser, and have reached a little stumbling 
+block. Straightforward, most of the suggested changes in syntax simply do not
+work. This will require either adding new brackets, which may be cumbersome,
+or some more intricate hacking of the LR grammar. It is possible that my approach
+is slightly wrong and I have to modify where the explicit type application can 
+fit into the function application syntax (i.e., my current code in the parser is
+located in the wrong set of rules).
+
+I may need to create a new token (for example, "{| |}" brackets). However, I am 
+not going to do this just yet. If I want to do it, it will require editing the 
+Lexer.x (Alex) file, which does not look very straightforward.

@@ -72,6 +72,12 @@ import Control.Monad    ( mplus )
 
 {-
 -----------------------------------------------------------------------------
+3 June 2013
+
+Conflicts: 49 shift/reduce
+           1 reduce/reduce
+  
+-----------------------------------------------------------------------------
 12 October 2012
 
 Conflicts: 43 shift/reduce
@@ -1077,6 +1083,7 @@ context :: { LHsContext RdrName }
                                              (LL $ HsEqTy $1 $3) }
         | btype                         {% checkContext $1 }
 
+-- Hamidhasan: look here for types
 type :: { LHsType RdrName }
         : btype                         { $1 }
         | btype qtyconop type           { LL $ mkHsOpTy $1 $2 $3 }
@@ -1506,7 +1513,7 @@ fexp    :: { LHsExpr RdrName }
 aexp    :: { LHsExpr RdrName }
         : qvar '@' aexp                 { LL $ EAsPat $1 $3 }
         | '~' aexp                      { LL $ ELazyPat $2 }
-        | '{' type '}' aexp             { LL $ ETypeApp $2 $4 } -- Exp. Type App
+--        | '{|' type '|}' aexp     { LL $ ETypeApp $3 $6 } -- Exp. Type App
         | aexp1                 { $1 }
 
 aexp1   :: { LHsExpr RdrName }

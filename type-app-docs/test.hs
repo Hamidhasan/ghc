@@ -18,4 +18,4 @@ g :: a -> a
 g x = x
 
 main :: IO ()
-main = g {Int} y
+main = g {|Int|} y

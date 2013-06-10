@@ -93,3 +93,24 @@ located in the wrong set of rules).
 I may need to create a new token (for example, "{| |}" brackets). However, I am 
 not going to do this just yet. If I want to do it, it will require editing the 
 Lexer.x (Alex) file, which does not look very straightforward.
+
+## Week 2: June 10 - June 14
+
+#### Monday, June 10
+Today the parsing portion of the task was, at least initially, completed. This required a slight change to the
+intended abstract syntax, and after changing it, I was able to put in a new rule using the '&' character, that
+added no new shift/reduce conflicts to the parser. In order to add the rule, I had to also modify the lexer to
+recognize the ampersand token.
+
+The renamer portion was also completed - this time, by a previously unknown contributer who attempted to add the
+Explicit Type Application in the past, but stopped because they could not get it through the type checker (and left
+a comment saying that they could not). They had correctly implemented the renamer portion though (although it may
+require some sanity checking - it does, however, go through without error, and the test files now give "type checker"
+error messages).
+
+My advisor recommended that at this point, I should write up test cases, and run my current compiler through the test
+suite to see if it passes all of the current GHC test cases. Currently, the '&' is always enabled, and not an
+extension; however, it will most likely become an extension once the project is completed (That also means that
+when using it with code, the '&' will become a reserved character, although the syntax is still subject to change).
+I should also look at the GHC test suite and assemble some of my own test cases, to see what should and should not
+fail.

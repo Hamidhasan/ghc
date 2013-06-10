@@ -497,7 +497,7 @@ data Token
   | ITctype
 
   | ITdotdot                    -- reserved symbols
-  | ITcolon
+  | ITcolon                     -- Hamidhasan: add new symbol here if necessary
   | ITdcolon
   | ITequal
   | ITlam
@@ -513,6 +513,7 @@ data Token
   | ITbang
   | ITstar
   | ITdot
+  | ITamper                     -- for Explicit Type App
 
   | ITbiglam                    -- GHC-extension symbols
 
@@ -565,8 +566,8 @@ data Token
   | ITopenDecQuote              --  [d|
   | ITopenTypQuote              --  [t|
   | ITcloseQuote                --  |]
-  | ITidEscape   FastString     --  $x
-  | ITparenEscape               --  $(
+  | ITidEscape   FastString     --  $x         --this is how template haskell
+  | ITparenEscape               --  $(         -- "steals" $...Hamidhasan
   | ITtyQuote                   --  ''
   | ITquasiQuote (FastString,FastString,RealSrcSpan)
     -- ITquasiQuote(quoter, quote, loc)
@@ -683,6 +684,7 @@ reservedSymsFM = listToUFM $
        ,("=>",  ITdarrow,   always)
        ,("-",   ITminus,    always)
        ,("!",   ITbang,     always)
+       ,("&",   ITamper,    always)    -- Hamidhasan explicit ty app
 
         -- For data T (a::*) = MkT
        ,("*", ITstar, always) -- \i -> kindSigsEnabled i || tyFamEnabled i)

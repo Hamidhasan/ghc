@@ -312,6 +312,7 @@ incorrect.
  '-<<'          { L _ ITLarrowtail }            -- for arrow notation
  '>>-'          { L _ ITRarrowtail }            -- for arrow notation
  '.'            { L _ ITdot }
+ '&'            { L _ ITamper }                 -- for explicit type application 
 
  '{'            { L _ ITocurly }                        -- special symbols
  '}'            { L _ ITccurly }
@@ -1504,13 +1505,13 @@ hpc_annot :: { Located (FastString,(Int,Int),(Int,Int)) }
                                                  }
 
 fexp    :: { LHsExpr RdrName }
-        : fexp aexp                             { LL $ HsApp $1 $2 }
-        | fexp '@' etypes                       { LL $ HsApp $1 $3 }  
-        | aexp                                  { $1 }
+        : fexp aexp                            { LL $ HsApp $1 $2 }
+        | aexp                                 { $1 }
 
-etypes  :: { LHsExpr RdrName }
-        : '{' type '}' etypes                  { LL $ ETypeApp $2 $4 }
-        | '{' type '}' aexp2                   { LL $ ETypeApp $2 $4 }
+--        : fexp '&' etypes                      { LL $ HsApp $1 $3 }  
+-- etypes  :: { LHsExpr RdrName }
+--         : type '&' etypes                  { LL $ ETypeApp $1 $3 }
+--         | type aexp                        { LL $ ETypeApp $1 $2 } 
 
 -- Hamidhasan: here is the as pattern. figure out what all these
 -- fexp and aexp mean.
@@ -1520,7 +1521,6 @@ etypes  :: { LHsExpr RdrName }
 aexp    :: { LHsExpr RdrName }
         : qvar '@' aexp                 { LL $ EAsPat $1 $3 }
         | '~' aexp                      { LL $ ELazyPat $2 }
---        | '{|' type '|}' aexp     { LL $ ETypeApp $3 $6 } -- Exp. Type App
         | aexp1                 { $1 }
 
 aexp1   :: { LHsExpr RdrName }
@@ -1537,7 +1537,11 @@ aexp2   :: { LHsExpr RdrName }
 --      | STRING                        { sL (getLoc $1) (HsOverLit $! mkHsIsString (getSTRING $1) placeHolderType) }
         | INTEGER                       { sL (getLoc $1) (HsOverLit $! mkHsIntegral (getINTEGER $1) placeHolderType) }
         | RATIONAL                      { sL (getLoc $1) (HsOverLit $! mkHsFractional (getRATIONAL $1) placeHolderType) }
-
+        
+        --Hamidhasan: Here are the expressions for explicit type application. May be need to move it
+        --up in the grammar so it doesn't parse in some cases, though we could check this later.
+        | '&' atype                     { LL $ ETypeApp $2 }
+        
         -- N.B.: sections get parsed by these next two productions.
         -- This allows you to write, e.g., '(+ 3, 4 -)', which isn't
         -- correct Haskell (you'd have to write '((+ 3), (4 -))')

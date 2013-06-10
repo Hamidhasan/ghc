@@ -306,9 +306,9 @@ rnExpr (HsMultiIf ty alts)
   = do { (alts', fvs) <- mapFvRn (rnGRHS IfAlt rnLExpr) alts
        ; return (HsMultiIf ty alts', fvs) }
 
---rnExpr (ETypeApp a _) --Hamidhasan: check this: changed from legacy HsType code
---  = rnLHsType HsTypeCtx a	`thenM` \ (t, fvT) -> 
---    return (ETypeApp t, fvT)
+rnExpr (ETypeApp a) --Hamidhasan: check this: changed from legacy HsType code
+  = rnLHsType HsTypeCtx a	`thenM` \ (t, fvT) -> 
+    return (ETypeApp t, fvT)
 
 rnExpr (ArithSeq _ _ seq)
   = do { opt_OverloadedLists <- xoptM Opt_OverloadedLists
@@ -338,7 +338,7 @@ rnExpr e@EWildPat      = do { holes <- xoptM Opt_TypeHoles
 rnExpr e@(EAsPat {})   = patSynErr e
 rnExpr e@(EViewPat {}) = patSynErr e
 rnExpr e@(ELazyPat {}) = patSynErr e
-rnExpr e@(ETypeApp _ _) = patSynErr e --Hamidhasan: this is a temp fix
+--rnExpr e@(ETypeApp _) = patSynErr e --Hamidhasan: this is a temp fix
 \end{code}
 
 %************************************************************************

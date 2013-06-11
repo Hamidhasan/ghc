@@ -235,8 +235,9 @@ tcExpr (ExprWithTySig expr sig_ty) res_ty
       ; (inst_wrap, rho) <- deeplyInstantiate ExprSigOrigin sig_tc_ty
       ; tcWrapResult (mkHsWrap inst_wrap inner_expr) rho res_ty }
 
-tcExpr (ETypeApp ty) _
-  = failWithTc (text "HAMIDHASAN: Can't handle type argument:" <+> ppr ty)
+tcExpr (ETypeApp ty) res_ty
+  = failWithTc (text "HAMIDHASAN: Can't handle type argument:" <+> ppr ty <+>
+                text " res_ty: " <+> ppr res_ty)
 	-- This is the syntax for type applications that I was planning
 	-- but there are difficulties (e.g. what order for type args)
 	-- so it's not enabled yet.

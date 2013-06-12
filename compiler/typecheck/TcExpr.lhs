@@ -236,15 +236,20 @@ tcExpr (ExprWithTySig expr sig_ty) res_ty
       ; tcWrapResult (mkHsWrap inst_wrap inner_expr) rho res_ty }
 
 tcExpr (ETypeApp ty) res_ty
-  = failWithTc (text "HAMIDHASAN: Can't handle type argument:" <+> ppr ty <+> 
-                text " res_ty: " <+> ppr res_ty)
-	-- This is the syntax for type applications that I was planning
+  = do { gbl_env <- getGblEnv ;
+         lcl_env <- getLclEnv ;
+         failWithTc (text "HAMIDHASAN: Can't handle type argument:" <+> ppr ty <+> 
+                     text " res_ty: " <+> ppr res_ty <+> text "\n Global Env: " <+>
+                     text "\n Local Env: " <+> text "\n")
+     	}
+        -- This is the syntax for type applications that I was planning
 	-- but there are difficulties (e.g. what order for type args)
 	-- so it's not enabled yet.
 	-- Can't eliminate it altogether from the parser, because the
 	-- same parser parses *patterns*.
         -- Hamidhasan: Have no fear, kindred spirit, I will implement it for you.
         -- TODO: Type check ETypeApp
+
 tcExpr (HsUnboundVar v) res_ty
   = tcHole (rdrNameOcc v) res_ty
 \end{code}

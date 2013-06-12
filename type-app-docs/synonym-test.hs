@@ -7,26 +7,30 @@
 module Main where
 import Prelude
 
-data Foo = a -> b -> Food a b
-
+data Foo a b = Foo a b deriving Show
 type Oof b a = Foo a b
+
+-- Type of Foo constructor: forall a b . a -> b -> Foo a b
+-- Type of Oof constructor: forall b a . b -> a -> Foo a b
 
 g :: a -> a
 g u = u
 
-add :: Int -> Bool -> Int
-add x True = x + 1
-add x False = x - 1
+-- No type sig
+pairup x y = (x, y)
 
-h :: Int -> Bool -> Int
-h x y = add &Int &Bool x y
+h (Foo a b) = pairup a b
+h _ = undefined
 
-f :: Int -> Int
-f x = g &[Int] [1,2,3]
+f (Foo a b) = pairup &Int &Bool a b
+f _ = undefined
 
-foo :: (Int -> Bool) -> Int
-foo x = f &(Int -> Bool) h &Int
+-- What will occur if f is called with foo and oof?
 
 main :: IO ()
-main = let x = 5 in
-       print $ f x
+main = let foo = Foo 5 True :: Foo Int Bool  in
+       let oof = Foo 8 False :: Oof Bool Int in
+       do
+         print "foo"
+         print $ (f oof) == (f foo)
+         return ()

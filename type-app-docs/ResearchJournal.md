@@ -114,3 +114,24 @@ extension; however, it will most likely become an extension once the project is 
 when using it with code, the '&' will become a reserved character, although the syntax is still subject to change).
 I should also look at the GHC test suite and assemble some of my own test cases, to see what should and should not
 fail.
+
+#### Wednesday, June 12
+
+Between today and yesterday, the build configuration on my virtual machine got corrupted, and it was 
+randomly compiling certain modules incorrectly. Redownloading and remaking from scratch did not seem
+to work, so I had to do the unthinkable: build it on Windows. This took a large portion of time but
+I was able to actually get almost the entire working environment set up on Windows - and it's not
+that bad! The added speed and ability to use all four cores while running make or the testsuite also
+helps.
+
+Before rebuilding on Windows, however, I ran the entire testsuite on the virtual machine - on both
+branch master and type-app. Both reported the exact same test results, so it seems that my initial
+changes to the parser and lexer are not breaking anything in the build process (though the feature
+remains incomplete in the typechecker). As of right now, however, I believe that the addition 
+restricts the use of the '&' character (usually it is up for grabs as an infix function definition).
+
+I have begun to write some very small test cases, as well as reading up on how the typechecker works
+in order to figure out how to implement explicit type application. There are a lot of subtleties to
+consider, so this part will most likely be the most difficult part of the project.
+
+

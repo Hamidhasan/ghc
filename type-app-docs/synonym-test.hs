@@ -7,7 +7,7 @@
 module Main where
 import Prelude
 
-data Foo a b = Foo a b deriving Show
+data Foo a b = Foo a b deriving (Eq, Show)
 type Oof b a = Foo a b
 
 -- Type of Foo constructor: forall a b . a -> b -> Foo a b
@@ -32,5 +32,7 @@ main = let foo = Foo 5 True :: Foo Int Bool  in
        let oof = Foo 8 False :: Oof Bool Int in
        do
          print "foo"
-         print $ (f oof) == (f foo)
+         foof <- f oof
+         ffoo <- f foo
+         print $ foof == ffoo
          return ()

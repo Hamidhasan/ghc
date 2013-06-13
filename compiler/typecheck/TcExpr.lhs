@@ -913,7 +913,7 @@ tcApp (L loc (HsVar fun)) args res_ty
 
 tcApp fun args res_ty
   = do	{   -- Type-check the function
-	; (fun1, fun_tau) <- tcInferFun fun
+	; (fun1, fun_tau) <- tcInferFun fun  --Hamidhasan: look here for fun
 
 	    -- Extract its argument types
 	; (co_fun, expected_arg_tys, actual_res_ty)
@@ -956,7 +956,7 @@ tcInferApp fun args
               app  = foldl mkHsApp fun2 args1
         ; return (unLoc app, actual_res_ty) }
 
-----------------
+---------------- Hamidhasan: look at funs above and below
 tcInferFun :: LHsExpr Name -> TcM (LHsExpr TcId, TcRhoType)
 -- Infer and instantiate the type of a function
 tcInferFun (L loc (HsVar name)) 

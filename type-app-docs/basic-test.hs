@@ -16,4 +16,6 @@ f x = g &[Int] [1,2,3]
 
 main :: IO ()
 main = let x = 5 in
-       print $ f x
+       do
+         print $ f x
+         print $ g &Int 7

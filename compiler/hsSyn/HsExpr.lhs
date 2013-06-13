@@ -313,7 +313,8 @@ data HsExpr id
   | ELazyPat    (LHsExpr id) -- ~ pattern
 
   | ETypeApp    (LHsType id) -- Explicit type argument; e.g  f {| Int |} x y
-             -- (LHsExpr id) -- Hamidhasan: Is this what I need to implement?
+  
+   -- Hamidhasan: Is this what I need to implement?
                              -- Or at least the HsSyn version of what is needed.
     -- Renamed from HsType -> ETypeApp, to match above.
     -- However, this is probably not going to be "temporary" for the renamer;

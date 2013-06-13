@@ -134,4 +134,16 @@ I have begun to write some very small test cases, as well as reading up on how t
 in order to figure out how to implement explicit type application. There are a lot of subtleties to
 consider, so this part will most likely be the most difficult part of the project.
 
+#### Thursday, June 13
+
+I spent the first half of today writing up more detailed testcases, and some had proposed edge cases that
+tested the limits of what Explicit Type Application should and should not be able to do. I now have a
+larger test suite that demonstrates how using the feature would look like.
+
+I also met with my advisor to provide a status report of what I have done so far, show her the test cases,
+and talk about the next challenge: semantics, and/or getting explicit type application through GHC's
+typechecker. My advisor gave me a quick and effective introduction to how polymorphic typechecking works,
+and pointed me to two papers that I should look over to help me understand the type system more completely. 
+
+
 

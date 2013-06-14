@@ -143,7 +143,10 @@ larger test suite that demonstrates how using the feature would look like.
 I also met with my advisor to provide a status report of what I have done so far, show her the test cases,
 and talk about the next challenge: semantics, and/or getting explicit type application through GHC's
 typechecker. My advisor gave me a quick and effective introduction to how polymorphic typechecking works,
-and pointed me to two papers that I should look over to help me understand the type system more completely. 
+and pointed me to two papers that I should look over to help me understand the type system more completely.
+
+The two papers are located here: http://repository.upenn.edu/cis_papers/315/ 
+and http://research.microsoft.com/apps/pubs/default.aspx?id=162516
 
 
 

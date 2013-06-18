@@ -147,6 +147,23 @@ and pointed me to two papers that I should look over to help me understand the t
 
 The two papers are located here: http://repository.upenn.edu/cis_papers/315/ 
 and http://research.microsoft.com/apps/pubs/default.aspx?id=162516
+## Week 3: June 17 - June 21
 
+#### Tuesday, June 18
+Yesterday and today, I thoroughly read through the first of the two research papers, and began 
+reading the second. The first paper was very informative, and described theoretically how a 
+Haskell-like type system should work; then, proceeded to give an actual Haskell implementation.
 
+This implementation mirrored what is in the compiler/typecheck/ directory in GHC; many of the
+variables are named similarly, and it is helping me to understand the code in GHC's typechecker.
+
+I also figured out how the typechecker is able to accumulate all the arguments of a function, 
+and then how it typechecks it. I am still not sure how GHC exactly resolves the type arguments;
+but I know where in the code it attempts to do so. 
+
+The next stage, after reviewing the second paper (which is more constraint-based but also a bit
+more in-depth than the first), will be to **create some sample judgements/typing rules that**
+**demonstrate the theoretical use of the new rule: Explicit Type Application**. For this part of
+the assignment, it will be necessary to solve the problem theoretically before diving into the code
+and attempting to blindly solve it in the gigantic GHC compiler.
 

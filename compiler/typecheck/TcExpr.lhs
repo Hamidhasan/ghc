@@ -101,7 +101,7 @@ tcMonoExpr, tcMonoExprNC
 			 -- Definitely no foralls at the top
     -> TcM (LHsExpr TcId)
 
-tcMonoExpr expr res_ty
+tcMonoExpr expr res_ty  -- Hamidhasan look here
   = addErrCtxt (exprCtxt expr) $
     tcMonoExprNC expr res_ty
 
@@ -899,8 +899,16 @@ tcApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
 tcApp (L _ (HsPar e)) args res_ty
   = tcApp e args res_ty
 
+tcApp (L _ (HsApp e1 (L _ (ETypeApp _)))) args res_ty
+  = tcApp e1 args res_ty        -- Hamidhasan Todo: do something with the
+                                -- ETypeApp arguments
+
+
 tcApp (L _ (HsApp e1 e2)) args res_ty
   = tcApp e1 (e2:args) res_ty	-- Accumulate the arguments
+                                -- Hamidhasan: This is where they accumulate
+                                -- all of the arguments. Here is where I can
+                                -- look specifically for &Type
 
 tcApp (L loc (HsVar fun)) args res_ty
   | fun `hasKey` tagToEnumKey

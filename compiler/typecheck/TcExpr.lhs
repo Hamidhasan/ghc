@@ -899,7 +899,7 @@ tcApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
 tcApp (L _ (HsPar e)) args res_ty
   = tcApp e args res_ty
 
-tcApp (L _ (HsApp e1 (L _ (ETypeApp _)))) args res_ty
+tcApp (L _ (HsApp e1 e2@(L _ (ETypeApp _)))) args res_ty
   = tcApp e1 args res_ty        -- Hamidhasan Todo: do something with the
                                 -- ETypeApp arguments
 
@@ -921,11 +921,11 @@ tcApp (L loc (HsVar fun)) args res_ty
 
 tcApp fun args res_ty
   = do	{   -- Type-check the function
-	; (fun1, fun_tau) <- tcInferFun fun  --Hamidhasan: look here for fun
+	; (fun1, fun_tau) <- tcInferFun fun  --Hamidhasan: type app needs to be after this line
 
 	    -- Extract its argument types
 	; (co_fun, expected_arg_tys, actual_res_ty)
-	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
+	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau         
 
 	-- Typecheck the result, thereby propagating 
         -- info (if any) from result into the argument types
@@ -957,7 +957,7 @@ tcInferApp fun args
   = -- Very like the tcApp version, except that there is
     -- no expected result type passed in
     do	{ (fun1, fun_tau) <- tcInferFun fun
-	; (co_fun, expected_arg_tys, actual_res_ty)
+	; (co_fun, expected_arg_tys, actual_res_ty) --Hamidhasan: typeapp needs to be here
 	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
 	; args1 <- tcArgs fun args expected_arg_tys
 	; let fun2 = mkLHsWrapCo co_fun fun1
@@ -997,6 +997,9 @@ tcArg :: LHsExpr Name				-- The function (for error messages)
        -> TcM (LHsExpr TcId)			-- Resulting argument
 tcArg fun (arg, ty, arg_no) = addErrCtxt (funAppCtxt fun arg arg_no)
 				 	 (tcPolyExprNC arg ty)
+
+tcArg fun (arg@(L loc (ETypeApp givenType)), expectType, arg_no) = 
+    addErrCtxt (funAppCtxt fun arg arg_no) (tcPolyExprNC arg expectType) 
 
 ----------------
 tcTupArgs :: [HsTupArg Name] -> [TcSigmaType] -> TcM [HsTupArg TcId]

@@ -167,3 +167,29 @@ more in-depth than the first), will be to **create some sample judgements/typing
 the assignment, it will be necessary to solve the problem theoretically before diving into the code
 and attempting to blindly solve it in the gigantic GHC compiler.
 
+#### Thursday, June 20th
+I have finished reading both papers [to the best of my limited ability!]. I now have a much better
+grasp of what is going on behind the type checker. 
+
+I have not made judgments yet, but I have been poking around within the compiler itself to see 
+how function applicatons are compiled. At this point, I have narrowed down the functions that I need
+to change to about two or three specific ones. 
+
+It is possible that in order to implement this feature, I will have to treat ETypeApp - basically,
+the flagger for the variable - as a "seperate" application and re-do all the typing rules for it -
+basically, treat the entire function differently if it sees an type application. This is what I 
+tried to do initially in the parser, but it did not seem to work well. 
+
+This may need to be done because the type application(s) need to create new meta TyVar[iable]s and 
+then re-unify with the already-checked function type. Basically, the function type, after it is 
+checked, needs to be checked against the type application(s) to see if the function's argument-types
+are more polymorphic than what is supplied by the type application. To do this, it may require a 
+greater context - one that can be provided if we implement a seperate "app" rule.
+
+However, we could just also pass information back - this is the way it will be done if I stick with
+the current approach. This will ruin the nicely-built map function in the typechecker, which I 
+hesitate to do, but may need to end up doing.
+
+After creating the judgments, I will try to investigate this further. For now, I will stick with 
+the current approach - ETypeApp is a abs. syntax element that only appears as a type, and as an arg
+of a function - no special "app" rule is needed to typecheck it.

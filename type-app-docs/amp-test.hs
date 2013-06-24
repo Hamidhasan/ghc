@@ -17,14 +17,9 @@ add x False = x - 1
 
 -- This seems redundant, but not incorrect.
 -- Perhaps it should give a warning?
-h :: Int -> Bool -> Int
+--h :: Int -> Bool -> Int
 h x y = add &Int &Bool x y
-
-f x = g &[Int] x
-
-foo :: (a -> b) -> a
-foo fun = g (fun) 
 
 main :: IO ()
 main = let x = 5 in
-       print $ f x
+       print $ h 5 True

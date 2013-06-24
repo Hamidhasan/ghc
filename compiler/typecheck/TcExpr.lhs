@@ -159,8 +159,11 @@ tcExpr e res_ty | debugIsOn && isSigmaTy res_ty     -- Sanity check
        	        = pprPanic "tcExpr: sigma" (ppr res_ty $$ ppr e)
 
 tcExpr (HsVar name)  res_ty = tcCheckId name res_ty
-
-tcExpr (HsApp e1 e2) res_ty = tcApp e1 [e2] res_ty
+                 
+-- If we see an exp. type app as the first argument, put it in the other list
+tcExpr (HsApp e1 e2@(L _ (ETypeApp _))) res_ty = tcApp e1 [] [e2] res_ty
+                             
+tcExpr (HsApp e1 e2) res_ty = tcApp e1 [e2] [] res_ty
 
 tcExpr (HsLit lit)   res_ty = do { let lit_ty = hsLitType lit
 		     	         ; tcWrapResult (HsLit lit) lit_ty res_ty }
@@ -236,12 +239,8 @@ tcExpr (ExprWithTySig expr sig_ty) res_ty
       ; tcWrapResult (mkHsWrap inst_wrap inner_expr) rho res_ty }
 
 tcExpr (ETypeApp ty) res_ty
-  = do { gbl_env <- getGblEnv ;
-         lcl_env <- getLclEnv ;
-         failWithTc (text "HAMIDHASAN: Can't handle type argument:" <+> ppr ty <+> 
-                     text " res_ty: " <+> ppr res_ty <+> text "\n Global Env: " <+>
-                     text "\n Local Env: " <+> text "\n")
-     	}
+  = failWithTc (text "HAMIDHASAN: Type argument &" <+> ppr ty <+>
+                text  " must be within function application.  res_ty: " <+> ppr res_ty)
         -- This is the syntax for type applications that I was planning
 	-- but there are difficulties (e.g. what order for type args)
 	-- so it's not enabled yet.
@@ -893,6 +892,8 @@ arithSeqEltType (Just fl) res_ty
 %************************************************************************
 
 \begin{code}
+  
+{-
 tcApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
       -> TcRhoType -> TcM (HsExpr TcId) -- Translated fun and args
 
@@ -900,13 +901,13 @@ tcApp (L _ (HsPar e)) args res_ty
   = tcApp e args res_ty
 
 tcApp (L _ (HsApp e1 e2@(L _ (ETypeApp _)))) args res_ty
-  = tcApp e1 args res_ty        -- Hamidhasan Todo: do something with the
+  = tcApp e1 args res_ty           Todo: do something with the
                                 -- ETypeApp arguments
 
 
 tcApp (L _ (HsApp e1 e2)) args res_ty
   = tcApp e1 (e2:args) res_ty	-- Accumulate the arguments
-                                -- Hamidhasan: This is where they accumulate
+                                -- This is where they accumulate
                                 -- all of the arguments. Here is where I can
                                 -- look specifically for &Type
 
@@ -933,6 +934,66 @@ tcApp fun args res_ty
         ; co_res <- addErrCtxtM (funResCtxt True (unLoc fun) actual_res_ty res_ty) $
                     unifyType actual_res_ty res_ty
 
+	-- Typecheck the arguments
+	; args1 <- tcArgs fun args expected_arg_tys
+
+        -- Assemble the result
+	; let fun2 = mkLHsWrapCo co_fun fun1
+              app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 args1)
+
+        ; return (unLoc app) }
+-}
+
+tcApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
+      -> [LHsExpr Name]                 -- Explicit type args
+      -> TcRhoType -> TcM (HsExpr TcId) -- Translated fun and args
+
+tcApp (L _ (HsPar e)) args etypes res_ty
+  = tcApp e args etypes res_ty
+
+tcApp (L _ (HsApp e1 e2@(L _ (ETypeApp _)))) args etypes res_ty
+  = tcApp e1 args (e2:etypes) res_ty        -- Hamidhasan Todo: do something with the
+                                -- ETypeApp arguments
+
+
+tcApp (L _ (HsApp e1 e2)) args etypes res_ty
+  = tcApp e1 (e2:args) etypes res_ty	-- Accumulate the arguments
+                                -- Hamidhasan: This is where they accumulate
+                                -- all of the arguments. Here is where I can
+                                -- look specifically for &Type
+
+tcApp (L loc (HsVar fun)) args _ res_ty
+  | fun `hasKey` tagToEnumKey
+  , [arg] <- args
+  = tcTagToEnum loc fun arg res_ty
+
+  | fun `hasKey` seqIdKey
+  , [arg1,arg2] <- args
+  = tcSeq loc fun arg1 arg2 res_ty
+
+tcApp fun args etypes res_ty
+  = do	{   -- Type-check the function
+	; (fun1, fun_tau) <- tcInferFun fun  --Hamidhasan: type app needs to be after this line
+
+	    -- Extract its argument types
+	; (co_fun, expected_arg_tys, actual_res_ty)
+	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau         
+
+	-- Typecheck the result, thereby propagating 
+        -- info (if any) from result into the argument types
+        -- Both actual_res_ty and res_ty are deeply skolemised
+        ; co_res <- addErrCtxtM (funResCtxt True (unLoc fun) actual_res_ty res_ty) $
+                    unifyType actual_res_ty res_ty
+
+        -- Print out explicit types
+        ; warnTc True (text "Hamidhasan: App. Info: co_res " <+> ppr co_res <+> 
+                       text ", etypes: " <+> ppr etypes <+>
+                       text ", expected_arg_tys: " <+> ppr expected_arg_tys <+>
+                       text ", actual_res_ty: " <+> ppr actual_res_ty <+>
+                       text ", co_fun: " <+> ppr co_fun <+>
+                       text ", fun1: " <+> ppr fun1 <+> 
+                       text ", funtau: " <+> ppr fun_tau)
+        ; 
 	-- Typecheck the arguments
 	; args1 <- tcArgs fun args expected_arg_tys
 

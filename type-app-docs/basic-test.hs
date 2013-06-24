@@ -11,11 +11,11 @@ import Prelude
 g :: a -> a
 g u = u
 
-f :: a -> a
-f x = g &[Int] [1,2,3]
+--f :: Int
+f = g &Int 5
 
 main :: IO ()
 main = let x = 5 in
        do
-         print $ f x
+         print $ f
          print $ g &Int 7

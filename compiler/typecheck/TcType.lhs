@@ -802,6 +802,7 @@ tcSplitForAllTys ty = split ty ty []
      split _ (ForAllTy tv ty) tvs = split ty ty (tv:tvs)
      split orig_ty _          tvs = (reverse tvs, orig_ty)
 
+-- Hamidhasan look here for some helper functions
 tcIsForAllTy :: Type -> Bool
 tcIsForAllTy ty | Just ty' <- tcView ty = tcIsForAllTy ty'
 tcIsForAllTy (ForAllTy {}) = True

@@ -952,9 +952,7 @@ tcApp (L _ (HsPar e)) args etypes res_ty
   = tcApp e args etypes res_ty
 
 tcApp (L _ (HsApp e1 e2@(L _ (ETypeApp _)))) args etypes res_ty
-  = tcApp e1 args (e2:etypes) res_ty        -- Hamidhasan Todo: do something with the
-                                -- ETypeApp arguments
-
+  = tcApp e1 args (e2:etypes) res_ty        -- Hamidhasan: collecting type args
 
 tcApp (L _ (HsApp e1 e2)) args etypes res_ty
   = tcApp e1 (e2:args) etypes res_ty	-- Accumulate the arguments
@@ -986,14 +984,25 @@ tcApp fun args etypes res_ty
                     unifyType actual_res_ty res_ty
 
         -- Print out explicit types
-        ; warnTc True (text "Hamidhasan: App. Info: co_res " <+> ppr co_res <+> 
-                       text ", etypes: " <+> ppr etypes <+>
-                       text ", expected_arg_tys: " <+> ppr expected_arg_tys <+>
-                       text ", actual_res_ty: " <+> ppr actual_res_ty <+>
-                       text ", co_fun: " <+> ppr co_fun <+>
-                       text ", fun1: " <+> ppr fun1 <+> 
-                       text ", funtau: " <+> ppr fun_tau)
-        ; 
+        ; if length etypes /= 0 
+          then warnTc True $ text "Hamidhasan: App. Info: co_res: " <+> ppr co_res <+> 
+                      text ", etypes: " <+> ppr etypes <+>
+                      text ", expected_arg_tys: " <+> ppr expected_arg_tys <+>
+                      text ", actual_res_ty: " <+> ppr actual_res_ty <+>
+                      text ", co_fun: " <+> ppr co_fun <+>
+                      text ", fun1: " <+> ppr fun1 <+> 
+                      text ", funtau: " <+> ppr fun_tau
+          else warnTc True $ text "Hamidhasan: No Explicit Type Application"
+
+{-
+       ; warnTc True $ text "Are these foralltys? co_res: " <+> ppr (tcIsForAllTy co_res) <+> 
+                      text ", expected_arg_tys: " <+> ppr (tcIsForAllTy expected_arg_tys) <+>
+                      text ", actual_res_ty: " <+> ppr (tcIsForAllTy actual_res_ty) <+>
+                      text ", co_fun: " <+> ppr (tcIsForAllTy co_fun)
+-}
+
+        -- Apply any explicit type application
+        
 	-- Typecheck the arguments
 	; args1 <- tcArgs fun args expected_arg_tys
 
@@ -1058,9 +1067,6 @@ tcArg :: LHsExpr Name				-- The function (for error messages)
        -> TcM (LHsExpr TcId)			-- Resulting argument
 tcArg fun (arg, ty, arg_no) = addErrCtxt (funAppCtxt fun arg arg_no)
 				 	 (tcPolyExprNC arg ty)
-
-tcArg fun (arg@(L loc (ETypeApp givenType)), expectType, arg_no) = 
-    addErrCtxt (funAppCtxt fun arg arg_no) (tcPolyExprNC arg expectType) 
 
 ----------------
 tcTupArgs :: [HsTupArg Name] -> [TcSigmaType] -> TcM [HsTupArg TcId]

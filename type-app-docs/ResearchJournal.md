@@ -147,6 +147,7 @@ and pointed me to two papers that I should look over to help me understand the t
 
 The two papers are located here: http://repository.upenn.edu/cis_papers/315/ 
 and http://research.microsoft.com/apps/pubs/default.aspx?id=162516
+
 ## Week 3: June 17 - June 21
 
 #### Tuesday, June 18
@@ -193,3 +194,29 @@ hesitate to do, but may need to end up doing.
 After creating the judgments, I will try to investigate this further. For now, I will stick with 
 the current approach - ETypeApp is a abs. syntax element that only appears as a type, and as an arg
 of a function - no special "app" rule is needed to typecheck it.
+
+## Week 4: June 24 - June 28
+
+#### Monday, June 24
+Today, I was able to print out "warning" messages that [in an application using
+Explicit Type Application] inform me what the types of the function, expected 
+arguments, and explicit types, all are. In the case of polymorphic types, an 'a'
+followed by an underscore and random letters are printed out. 
+
+This gives me a sense of what types the typechecker currently has and is
+expecting. However, I'm still not sure how to check that this is a forall type,
+nor do I currently know how many variables are bound by the forall statement.
+
+A couple of questions I will need to face down the road:
+ - If a function has no forall type, and the programmer puts a type application,
+   should this be an error? I would think so - but then there must be a check
+   to see that the function is a forall type. [This is part of the current task].
+ 
+ - If the function has forall a b. (...), but the programmer only puts one
+   explicit type application, what should occur? Should the first variable be
+   explicitly typed, but the second is still free to bind with something else?
+   
+ - In the above context, what constitutes "the second variable", since the
+   forall statement does not have an ordering of variables (and the ordering 
+   can be nontrivially changed with the use of type synonyms)?
+

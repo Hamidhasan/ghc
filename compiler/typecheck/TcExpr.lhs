@@ -985,14 +985,20 @@ tcApp fun args etypes res_ty
 
         -- Print out explicit types
         ; if length etypes /= 0 
-          then warnTc True $ text "Hamidhasan: App. Info: co_res: " <+> ppr co_res <+> 
-                      text ", etypes: " <+> ppr etypes <+>
+          then warnTc True $ text "Hamidhasan: App. Info: etypes: " <+> ppr etypes <+> 
                       text ", expected_arg_tys: " <+> ppr expected_arg_tys <+>
-                      text ", actual_res_ty: " <+> ppr actual_res_ty <+>
                       text ", co_fun: " <+> ppr co_fun <+>
-                      text ", fun1: " <+> ppr fun1 <+> 
-                      text ", funtau: " <+> ppr fun_tau
+                      text ", funtau: " <+> ppr fun_tau <+>
+                      text ", freevars: " <+> ppr (coVarsOfTcCo co_fun)
           else warnTc True $ text "Hamidhasan: No Explicit Type Application"
+ 
+       -- co_res: the result coercion
+       -- actual_res_ty, res_ty: the result type
+       
+       -- fun1: the name of the function
+       -- funtau: the type of the entire function
+       -- co_fun: the coercion that has the type of the entire function
+       -- expected_arg_tys: a list of the argument types
 
 {-
        ; warnTc True $ text "Are these foralltys? co_res: " <+> ppr (tcIsForAllTy co_res) <+> 
@@ -1009,7 +1015,11 @@ tcApp fun args etypes res_ty
         -- Assemble the result
 	; let fun2 = mkLHsWrapCo co_fun fun1
               app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 args1)
-
+{-
+        ; warnTc True $ text "Hamidhasan: args1: " <+> ppr args1 <+>
+                 text ", fun2: " <+> ppr fun2 <+>
+                 text ", app: " <+> ppr app
+-}
         ; return (unLoc app) }
 
 
@@ -1067,6 +1077,7 @@ tcArg :: LHsExpr Name				-- The function (for error messages)
        -> TcM (LHsExpr TcId)			-- Resulting argument
 tcArg fun (arg, ty, arg_no) = addErrCtxt (funAppCtxt fun arg arg_no)
 				 	 (tcPolyExprNC arg ty)
+
 
 ----------------
 tcTupArgs :: [HsTupArg Name] -> [TcSigmaType] -> TcM [HsTupArg TcId]

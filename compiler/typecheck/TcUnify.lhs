@@ -127,12 +127,15 @@ matchExpectedFunTys :: SDoc 	-- See Note [Herald for matchExpectedFunTys]
 --		(forall a. ty) -> other
 -- If allocated (fresh-meta-var1 -> fresh-meta-var2) and unified, we'd
 -- hide the forall inside a meta-variable
+-- Hamidhasan: Will [possibly] need to use this to check 
+-- the result of applying the type application
+
 
 matchExpectedFunTys herald arity orig_ty 
   = go arity orig_ty
   where
     -- If     go n ty = (co, [t1,..,tn], ty_r)
-    -- then   co : ty ~ t1 -> .. -> tn -> ty_r
+    -- then   co : ty ~ t1 -> .. -> tn -> ty_r 
 
     go n_req ty
       | n_req == 0 = return (mkTcReflCo ty, [], ty)

@@ -14,8 +14,11 @@ g u = u
 --f :: Int
 f = g &Int 5
 
+addOne :: Int -> Int
+addOne x = x + 1
+
 main :: IO ()
-main = let x = 5 in
-       do
+main = do
          print $ f
          print $ g &Int 7
+         print $ addOne &Int 4

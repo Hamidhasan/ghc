@@ -565,7 +565,7 @@ involving Any.  So the conclusion is this: when generalising
 See Trac #1813 for example.
 
 \begin{code}
-exactTyVarsOfType :: Type -> TyVarSet
+exactTyVarsOfType :: Type -> TyVarSet -- Hamidhasan: do I need this fun?
 -- Find the free type variables (of any kind)
 -- but *expand* type synonyms.  See Note [Silly type synonym] above.
 exactTyVarsOfType ty
@@ -1213,7 +1213,7 @@ any foralls.  E.g.
 	f :: (?x::Int) => Int -> Int
 
 \begin{code}
-isSigmaTy :: Type -> Bool
+isSigmaTy :: Type -> Bool  -- Hamidhasan: do I need to use this fun 
 isSigmaTy ty | Just ty' <- tcView ty = isSigmaTy ty'
 isSigmaTy (ForAllTy _ _) = True
 isSigmaTy (FunTy a _)    = isPredTy a

@@ -973,7 +973,7 @@ tcApp fun args etypes res_ty
   = do	{   -- Type-check the function
 	; (fun1, fun_tau) <- tcInferFun fun  --Hamidhasan: type app needs to be after this line
 
-	    -- Extract its argument types
+            -- Extract its argument types
 	; (co_fun, expected_arg_tys, actual_res_ty)
 	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau         
 
@@ -982,14 +982,13 @@ tcApp fun args etypes res_ty
         -- Both actual_res_ty and res_ty are deeply skolemised
         ; co_res <- addErrCtxtM (funResCtxt True (unLoc fun) actual_res_ty res_ty) $
                     unifyType actual_res_ty res_ty
-
+{-
         -- Print out explicit types
         ; if length etypes /= 0 
-          then warnTc True $ text "Hamidhasan: App. Info: etypes: " <+> ppr etypes <+> 
-                      text ", expected_arg_tys: " <+> ppr expected_arg_tys <+>
-                      text ", co_fun: " <+> ppr co_fun <+>
-                      text ", funtau: " <+> ppr fun_tau <+>
-                      text ", freevars: " <+> ppr (coVarsOfTcCo co_fun)
+          then warnTc True $ text "Hamidhasan: App. Info: etypes: " <> ppr etypes <> 
+                      text ", expected_arg_tys: " <> ppr expected_arg_tys $$
+                      text ", co_fun: " <> ppr co_fun <>
+                      text ", funtau: " <> ppr fun_tau
           else warnTc True $ text "Hamidhasan: No Explicit Type Application"
  
        -- co_res: the result coercion
@@ -1000,7 +999,7 @@ tcApp fun args etypes res_ty
        -- co_fun: the coercion that has the type of the entire function
        -- expected_arg_tys: a list of the argument types
 
-{-
+
        ; warnTc True $ text "Are these foralltys? co_res: " <+> ppr (tcIsForAllTy co_res) <+> 
                       text ", expected_arg_tys: " <+> ppr (tcIsForAllTy expected_arg_tys) <+>
                       text ", actual_res_ty: " <+> ppr (tcIsForAllTy actual_res_ty) <+>
@@ -1050,10 +1049,21 @@ tcInferFun :: LHsExpr Name -> TcM (LHsExpr TcId, TcRhoType)
 tcInferFun (L loc (HsVar name)) 
   = do { (fun, ty) <- setSrcSpan loc (tcInferId name)
        	       -- Don't wrap a context around a plain Id
+
+       ; warnTc True $ text "Hamidhasan: warning tcInferFun, HsVar name case" $+$
+                 text "Forall? " <> text (if tcIsForAllTy ty then "True" else "False") <>
+                 text ", freevars: " <> ppr (tcSplitForAllTys ty) <>
+                 text ", fun: " <> ppr fun <> text ", fun_ty: " <> ppr ty
+
        ; return (L loc fun, ty) }
 
 tcInferFun fun
   = do { (fun, fun_ty) <- tcInfer (tcMonoExpr fun)
+
+       ; warnTc True $ text "Hamidhasan: warning tcInferFun, general case" $+$
+                 text "Forall? " <> text (if tcIsForAllTy fun_ty then "True" else "False") <>
+                 text ", freevars: " <> ppr (tcSplitForAllTys fun_ty) <>
+                 text ", fun: " <> ppr fun <> text ", fun_ty: " <> ppr fun_ty
 
          -- Zonk the function type carefully, to expose any polymorphism
 	 -- E.g. (( \(x::forall a. a->a). blah ) e)
@@ -1150,7 +1160,8 @@ tcInferId :: Name -> TcM (HsExpr TcId, TcRhoType)
 -- Infer type, and deeply instantiate
 tcInferId n = tcInferIdWithOrig (OccurrenceOf n) n
 
-------------------------
+------------------------ --Hamidhasan: thread explicit types through here
+------------------------ -- as a seperate arg. Or, thread it through the monad
 tcInferIdWithOrig :: CtOrigin -> Name -> TcM (HsExpr TcId, TcRhoType)
 -- Look up an occurrence of an Id, and instantiate it (deeply)
 
@@ -1163,7 +1174,7 @@ tcInferIdWithOrig orig id_name
     lookup_id :: TcM TcId
     lookup_id 
        = do { thing <- tcLookup id_name
-	    ; case thing of
+	    ; case thing of  
     	    	 ATcId { tct_id = id, tct_level = lvl }
 	           -> do { check_naughty id        -- Note [Local record selectors]
                          ; checkThLocalId id lvl
@@ -1192,13 +1203,16 @@ instantiateOuter :: CtOrigin -> TcId -> TcM (HsExpr TcId, TcSigmaType)
 --   b) Deal with stupid checks
 -- Only look at the *outer level* of quantification
 -- See Note [Multiple instantiation]
+-- Hamidhasan: look here, modify this function to proceed.
 
 instantiateOuter orig id
   | null tvs && null theta
   = return (HsVar id, tau)
 
   | otherwise
-  = do { (_, tys, subst) <- tcInstTyVars tvs
+  = do { warnTc True $ text "instantiateOuter: id " <> ppr id <> text "tvs: " <> ppr tvs $$
+                       text "theta: " <> ppr theta <> text "tau: " <> ppr tau
+       ; (_, tys, subst) <- tcInstTyVars tvs
        ; doStupidChecks id tys
        ; let theta' = substTheta subst theta
        ; traceTc "Instantiating" (ppr id <+> text "with" <+> (ppr tys $$ ppr theta'))

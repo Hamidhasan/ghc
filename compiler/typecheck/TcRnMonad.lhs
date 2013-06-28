@@ -150,7 +150,8 @@ initTc hsc_env hsc_src keep_rn_syntax mod do_this
                 tcl_tidy       = emptyTidyEnv,
                 tcl_tyvars     = tvs_var,
                 tcl_lie        = lie_var,
-                tcl_untch      = noUntouchables
+                tcl_untch      = noUntouchables,
+                tcl_etypes     = []
              } ;
         } ;
 
@@ -1102,6 +1103,24 @@ setLclTypeEnv lcl_env thing_inside
   where
     upd env = env { tcl_env = tcl_env lcl_env,
                     tcl_tyvars = tcl_tyvars lcl_env }
+
+-- Hamidhasan: These 3 functions are for setting, getting,
+-- and appending type app information
+addLclTypeApp :: LHsExpr Name -> TcM a -> TcM a
+addLclTypeApp etype thing_inside
+  = updLclEnv upd thing_inside
+  where
+    upd env = env { tcl_etypes = (etype : tcl_etypes env) }
+
+
+setLclTypeApps :: [LHsExpr Name] -> TcM a -> TcM a
+setLclTypeApps etypes thing_inside
+  = updLclEnv upd thing_inside
+  where
+    upd env = env { tcl_etypes = etypes }
+
+getLclTypeApps :: TcM [LHsExpr Name]
+getLclTypeApps = do {env <- getLclEnv; return (tcl_etypes env)}
 
 traceTcConstraints :: String -> TcM ()
 traceTcConstraints msg

@@ -456,7 +456,8 @@ data TcLclEnv           -- Changes as we move inside an expression
                         -- Why mutable? see notes with tcGetGlobalTyVars
 
         tcl_lie  :: TcRef WantedConstraints,    -- Place to accumulate type constraints
-        tcl_errs :: TcRef Messages              -- Place to accumulate errors
+        tcl_errs :: TcRef Messages,             -- Place to accumulate errors
+        tcl_etypes :: [LHsExpr Name]            -- Accumulation of types for explicit application
     }
 
 -- Hamidhasan: Perhaps add etypes as part of the local env. then it can

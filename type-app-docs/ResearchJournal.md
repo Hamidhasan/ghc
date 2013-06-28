@@ -220,3 +220,12 @@ A couple of questions I will need to face down the road:
    forall statement does not have an ordering of variables (and the ordering 
    can be nontrivially changed with the use of type synonyms)?
 
+#### Friday, June 28th
+After meeting with my advisor yesterday, we were able to figure out where exactly to 
+inject the explicit types into the typechecker, as I was having trouble trying to
+find where the type variables were instantiated with meta-variables. 
+
+We also talked about threading the explicit types through the "local environment" of
+the typechecker monad. I completed most of the local-environment integration today,
+and now should be able to start working on actually instantiating the type variables
+with explicit types, through the tcInferId -> instantiateOuter -> ... chain of functions.

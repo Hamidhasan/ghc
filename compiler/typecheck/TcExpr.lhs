@@ -101,7 +101,7 @@ tcMonoExpr, tcMonoExprNC
 			 -- Definitely no foralls at the top
     -> TcM (LHsExpr TcId)
 
-tcMonoExpr expr res_ty  -- Hamidhasan look here
+tcMonoExpr expr res_ty
   = addErrCtxt (exprCtxt expr) $
     tcMonoExprNC expr res_ty
 
@@ -952,7 +952,8 @@ tcApp (L _ (HsPar e)) args etypes res_ty
   = tcApp e args etypes res_ty
 
 tcApp (L _ (HsApp e1 e2@(L _ (ETypeApp _)))) args etypes res_ty
-  = tcApp e1 args (e2:etypes) res_ty        -- Hamidhasan: collecting type args
+  = do  { addLclTypeApp e2 (tcApp e1 args (e2:etypes) res_ty)
+          }      -- Hamidhasan: collecting type args
 
 tcApp (L _ (HsApp e1 e2)) args etypes res_ty
   = tcApp e1 (e2:args) etypes res_ty	-- Accumulate the arguments
@@ -971,6 +972,8 @@ tcApp (L loc (HsVar fun)) args _ res_ty
 
 tcApp fun args etypes res_ty
   = do	{   -- Type-check the function
+        ; env <- getLclEnv
+        ; warnTc True $ text "Hamidhasan: Lcl_Env etypes: " <> ppr (tcl_etypes env)
 	; (fun1, fun_tau) <- tcInferFun fun  --Hamidhasan: type app needs to be after this line
 
             -- Extract its argument types

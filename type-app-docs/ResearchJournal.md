@@ -229,3 +229,29 @@ We also talked about threading the explicit types through the "local environment
 the typechecker monad. I completed most of the local-environment integration today,
 and now should be able to start working on actually instantiating the type variables
 with explicit types, through the tcInferId -> instantiateOuter -> ... chain of functions.
+
+## Week 5: July 1 - July 5
+
+#### Tuesday, July 2
+Success! I was able to get the first preliminary explicit types swapped into the function 
+signature. This was achieved after a large modification to the instantiateOuter function, 
+and it fails in most cases, but it does work for the most basic type substitutions. The 
+current implementation cannot substitute over type constructors, though this may not be too
+hard to solve.
+
+The bigger issue is that the "tcInfer" function is called implicitly and a lot more often 
+then I thought, thus failing randomly. For example, the show/read problem should be fixed 
+with just my implementation, but I think it is checked somewhere else before it can hit the 
+explicit type substitution and does not compile.
+
+Additionally, I was able to figure out the how the typechecker monad works, and made some
+modifications to keep the explicit types around in part of its local environment. This
+has made the code look much cleaner and conceptually nicer - it is clear, now, when we 
+decide to keep the types in the typechecker's "state". 
+
+After finding where to inject the explicit types, my advisor suggested two strategies to 
+perform the instantiation: either to split up and instantiate before trying to solve 
+constraints, or use the explicit types as additional constraints and let the constraint-
+solver figure out everything. I chose the first route; it seems that with polish, it will
+probably work in all cases, but the second route may be "nicer" in terms of code style
+and relationship with theory.

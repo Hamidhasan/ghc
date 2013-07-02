@@ -161,9 +161,9 @@ tcExpr e res_ty | debugIsOn && isSigmaTy res_ty     -- Sanity check
 tcExpr (HsVar name)  res_ty = tcCheckId name res_ty
                  
 -- If we see an exp. type app as the first argument, put it in the other list
-tcExpr (HsApp e1 e2@(L _ (ETypeApp _))) res_ty = tcApp e1 [] [e2] res_ty
+--tcExpr (HsApp e1 e2@(L _ (ETypeApp _))) res_ty = tcApp e1 [] [e2] res_ty
                              
-tcExpr (HsApp e1 e2) res_ty = tcApp e1 [e2] [] res_ty
+tcExpr (HsApp e1 e2) res_ty = tcApp e1 [e2] res_ty
 
 tcExpr (HsLit lit)   res_ty = do { let lit_ty = hsLitType lit
 		     	         ; tcWrapResult (HsLit lit) lit_ty res_ty }
@@ -893,15 +893,17 @@ arithSeqEltType (Just fl) res_ty
 
 \begin{code}
   
-{-
+
 tcApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
       -> TcRhoType -> TcM (HsExpr TcId) -- Translated fun and args
 
 tcApp (L _ (HsPar e)) args res_ty
   = tcApp e args res_ty
 
-tcApp (L _ (HsApp e1 e2@(L _ (ETypeApp _)))) args res_ty
-  = tcApp e1 args res_ty           Todo: do something with the
+tcApp (L _ (HsApp e1 (L _ (ETypeApp hs_etype)))) args res_ty
+  = do  { (etype, _) <- tcLHsType hs_etype
+        ; addLclTypeApp etype (tcApp e1 args res_ty) }        
+                                -- Todo: do something with the
                                 -- ETypeApp arguments
 
 
@@ -942,8 +944,8 @@ tcApp fun args res_ty
               app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 args1)
 
         ; return (unLoc app) }
--}
 
+{-
 tcApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
       -> [LHsExpr Name]                 -- Explicit type args
       -> TcRhoType -> TcM (HsExpr TcId) -- Translated fun and args
@@ -1008,8 +1010,6 @@ tcApp fun args etypes res_ty
                       text ", actual_res_ty: " <+> ppr (tcIsForAllTy actual_res_ty) <+>
                       text ", co_fun: " <+> ppr (tcIsForAllTy co_fun)
 -}
-
-        -- Apply any explicit type application
         
 	-- Typecheck the arguments
 	; args1 <- tcArgs fun args expected_arg_tys
@@ -1017,14 +1017,10 @@ tcApp fun args etypes res_ty
         -- Assemble the result
 	; let fun2 = mkLHsWrapCo co_fun fun1
               app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 args1)
-{-
-        ; warnTc True $ text "Hamidhasan: args1: " <+> ppr args1 <+>
-                 text ", fun2: " <+> ppr fun2 <+>
-                 text ", app: " <+> ppr app
--}
+
         ; return (unLoc app) }
 
-
+-}
 mk_app_msg :: LHsExpr Name -> SDoc
 mk_app_msg fun = sep [ ptext (sLit "The function") <+> quotes (ppr fun)
                      , ptext (sLit "is applied to")]
@@ -1053,21 +1049,21 @@ tcInferFun (L loc (HsVar name))
   = do { (fun, ty) <- setSrcSpan loc (tcInferId name)
        	       -- Don't wrap a context around a plain Id
 
-       ; warnTc True $ text "Hamidhasan: warning tcInferFun, HsVar name case" $+$
+{-     ; warnTc True $ text "Hamidhasan: warning tcInferFun, HsVar name case" $+$
                  text "Forall? " <> text (if tcIsForAllTy ty then "True" else "False") <>
                  text ", freevars: " <> ppr (tcSplitForAllTys ty) <>
                  text ", fun: " <> ppr fun <> text ", fun_ty: " <> ppr ty
-
+-}
        ; return (L loc fun, ty) }
 
 tcInferFun fun
   = do { (fun, fun_ty) <- tcInfer (tcMonoExpr fun)
 
-       ; warnTc True $ text "Hamidhasan: warning tcInferFun, general case" $+$
+{-     ; warnTc True $ text "Hamidhasan: warning tcInferFun, general case" $+$
                  text "Forall? " <> text (if tcIsForAllTy fun_ty then "True" else "False") <>
                  text ", freevars: " <> ppr (tcSplitForAllTys fun_ty) <>
                  text ", fun: " <> ppr fun <> text ", fun_ty: " <> ppr fun_ty
-
+-}
          -- Zonk the function type carefully, to expose any polymorphism
 	 -- E.g. (( \(x::forall a. a->a). blah ) e)
 	 -- We can see the rank-2 type of the lambda in time to genrealise e
@@ -1213,16 +1209,55 @@ instantiateOuter orig id
   = return (HsVar id, tau)
 
   | otherwise
-  = do { warnTc True $ text "instantiateOuter: id " <> ppr id <> text "tvs: " <> ppr tvs $$
-                       text "theta: " <> ppr theta <> text "tau: " <> ppr tau
+  = do { etypes <- getLclTypeApps
+
+       ; tau' <- 
+         if (null etypes || null tvs) then return tau else
+         if (length etypes > length tvs) then return tau
+         else let (args, res) = tcSplitFunTys tau in
+              let fun = instExplicitTypes etypes tvs $ args ++ [res] in
+              case fun of 
+               []   -> failWithTc $ text "Explicit Type Application applied to non-function type"
+               _:[] -> failWithTc $ text "Explicit Type Application applied to non-function type"
+               _:_ -> return $ mkFunTys (init fun) (last fun)
+
+       ; if (length etypes > length tvs) then warnTc True $ 
+             text "Too many explicit types: provided " <> int (length etypes) <> 
+             text " but have " <> int (length tvs) <> text " type variables." $$
+             text "Hamidhasan: debug info: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
+                       text " theta: " <> ppr theta <> text " tau: " <> ppr tau
+         else return ()
+
        ; (_, tys, subst) <- tcInstTyVars tvs
        ; doStupidChecks id tys
        ; let theta' = substTheta subst theta
        ; traceTc "Instantiating" (ppr id <+> text "with" <+> (ppr tys $$ ppr theta'))
+       ; if (null etypes) then return ()
+         else warnTc True $ text "instantiateOuter: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
+                       text " theta: " <> ppr theta <> text " tau: " <> ppr tau $$
+                       text " etypes: " <> ppr etypes <> text " tys: " <> ppr tys $$
+                       text " subst: " <> ppr subst <> text " theta': " <> ppr theta' $$
+                       text " tau': " <> ppr tau'
        ; wrap <- instCall orig tys theta'
        ; return (mkHsWrap wrap (HsVar id), TcType.substTy subst tau) }
   where
     (tvs, theta, tau) = tcSplitSigmaTy (idType id)
+
+--------------------------
+instExplicitTypes :: [Type] -> [TyVar] -> [Type] -> [Type] -- ETypes, Tyvars, and the modified funs
+instExplicitTypes [] _ fun = fun
+instExplicitTypes _ [] _ = panic "Too many explicit types provided, not enough tyvars"
+instExplicitTypes (e:es) (tyv:tyvs) fun = instExplicitTypes es tyvs $ instExplicitType e tyv fun []
+
+instExplicitType :: Type -> TyVar -> [Type]        -- The exp. type, the tyvar to sub, the fun. sig
+                  -> [Type] -> [Type]              -- an accumulator to replace it, and return it
+instExplicitType _ _ [] accum = accum
+instExplicitType etype tyvar (ty:tys) accum = 
+    case getTyVar_maybe ty of                      -- Todo: subst nested tyvars
+      Nothing  -> instExplicitType etype tyvar tys (ty:accum)
+      Just ty' -> if (tyvar == ty') then instExplicitType etype tyvar tys (etype:accum) 
+                  else instExplicitType etype tyvar tys (ty:accum)
+
 \end{code}
 
 Note [Multiple instantiation]

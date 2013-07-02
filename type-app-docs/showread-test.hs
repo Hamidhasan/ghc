@@ -17,4 +17,4 @@ f = g &Int 5
 main :: IO ()
 main = do
          print $ f 
-         print $ show (read "3")
+         print $ show (read &Int "3")

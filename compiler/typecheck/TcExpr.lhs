@@ -1210,44 +1210,58 @@ instantiateOuter orig id
 
   | otherwise
   = do { etypes <- getLclTypeApps
-
-       ; tau' <- 
-         if (null etypes || null tvs) then return tau else
-         if (length etypes > length tvs) then return tau
-         else let (args, res) = tcSplitFunTys tau in
-              let fun = instExplicitTypes etypes tvs $ args ++ [res] in
-              case fun of 
-               []   -> failWithTc $ text "Explicit Type Application applied to non-function type"
-               _:[] -> failWithTc $ text "Explicit Type Application applied to non-function type"
-               _:_ -> return $ mkFunTys (init fun) (last fun)
-
+       -- Create a TvSubst using zipOpenTvSubst. Then use this to subst into the Tau and Theta.
+       -- May need to use "zipTopTvSubst" instead - check this!!
+       
+      
+       ; (tvs', tau') <-                           -- Check for explicit type application
+         if (length etypes > length tvs) then return (tvs, tau) -- This should throw a failure
+         else return $ instExplicitTypes etypes (tvs, tau) 
+        -- substitute into the theta as well TODO
        ; if (length etypes > length tvs) then warnTc True $ 
              text "Too many explicit types: provided " <> int (length etypes) <> 
              text " but have " <> int (length tvs) <> text " type variables." $$
              text "Hamidhasan: debug info: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
                        text " theta: " <> ppr theta <> text " tau: " <> ppr tau
          else return ()
-
-       ; (_, tys, subst) <- tcInstTyVars tvs
+       
+       ; 
+       ; (_, tys, subst) <- tcInstTyVars tvs'
        ; doStupidChecks id tys
+      -- Substitute the typevariables into the theta earlier
        ; let theta' = substTheta subst theta
        ; traceTc "Instantiating" (ppr id <+> text "with" <+> (ppr tys $$ ppr theta'))
-       ; if (null etypes) then return ()
+       ; if (null etypes || null tvs) then return ()
          else warnTc True $ text "instantiateOuter: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
                        text " theta: " <> ppr theta <> text " tau: " <> ppr tau $$
                        text " etypes: " <> ppr etypes <> text " tys: " <> ppr tys $$
                        text " subst: " <> ppr subst <> text " theta': " <> ppr theta' $$
-                       text " tau': " <> ppr tau'
+                       text " tau': " <> ppr tau' <+> text " tvs': " <> ppr tvs' $$
+                       --text " elemTyVar? " <> ppr (elemVarSet (head tvs) (tyVarsOfType tau)) 
+
        ; wrap <- instCall orig tys theta'
-       ; return (mkHsWrap wrap (HsVar id), TcType.substTy subst tau) }
+ 
+       ; return (mkHsWrap wrap (HsVar id), TcType.substTy subst tau') }
   where
     (tvs, theta, tau) = tcSplitSigmaTy (idType id)
 
 --------------------------
-instExplicitTypes :: [Type] -> [TyVar] -> [Type] -> [Type] -- ETypes, Tyvars, and the modified funs
-instExplicitTypes [] _ fun = fun
-instExplicitTypes _ [] _ = panic "Too many explicit types provided, not enough tyvars"
-instExplicitTypes (e:es) (tyv:tyvs) fun = instExplicitTypes es tyvs $ instExplicitType e tyv fun []
+
+instExplicitTypes :: [Type] -> ([TyVar], Type) -> ([TyVar], Type) -- ETypes, Tyvars, and the tau
+instExplicitTypes [] (tvs, tau) = (tvs, tau)
+instExplicitTypes _ ([], _) = panic "Too many explicit types provided, not enough tyvars"
+instExplicitTypes (e:es) ((tv:tvs), tau) = instExplicitTypes es (tvs, substTyWith [tv] [e] tau)
+
+-- The function substTyWith takes a list of types, a list of tyvars, and type, and substitutes the first two into the type.
+-- However, it only works if the first two lists are of equal length.
+-- The way currently shown will perform the substitution one EType->TyVar at a time, thus, allowing the
+-- programmer to not specify all of the explicit types if they do not want to.
+
+-- A tuple type is needed so that we also return what tyvars are remaining if any - then we can
+-- regularly instantiate these in the tcInstTyVars call.
+
+
+{-
 
 instExplicitType :: Type -> TyVar -> [Type]        -- The exp. type, the tyvar to sub, the fun. sig
                   -> [Type] -> [Type]              -- an accumulator to replace it, and return it
@@ -1257,6 +1271,21 @@ instExplicitType etype tyvar (ty:tys) accum =
       Nothing  -> instExplicitType etype tyvar tys (ty:accum)
       Just ty' -> if (tyvar == ty') then instExplicitType etype tyvar tys (etype:accum) 
                   else instExplicitType etype tyvar tys (ty:accum)
+
+-- use tyVarsOfType
+
+instExplicitTypes :: [Type] -> [TyVar] -> [Type] -> [Type] -- ETypes, Tyvars, and the modified funs
+instExplicitTypes [] _ fun = fun
+instExplicitTypes _ [] _ = panic "Too many explicit types provided, not enough tyvars"
+instExplicitTypes (e:es) (tyv:tyvs) fun = instExplicitTypes es tyvs $ instExplicitType e tyv fun []
+
+let (tyvs, fun) = instExplicitTypes etypes (tvs, tau) in
+             case tcSplitFunTy_maybe fun of 
+               Just _ -> return (tyvs, fun)
+               Nothing -> failWithTc $ text "Explicit Type Application applied to non-function type"
+
+
+-}
 
 \end{code}
 

@@ -7,6 +7,12 @@
 module Main where
 import Prelude
 
+addOne :: Num a => a -> a
+addOne x = x + 1
+ 
+bool = False
+
 main :: IO ()
 main = do
-         print $ show &Int (read &Int "3")
+         print $ addOne &Bool True
+         print $ addOne &Bool bool

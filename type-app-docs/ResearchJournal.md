@@ -255,3 +255,10 @@ constraints, or use the explicit types as additional constraints and let the con
 solver figure out everything. I chose the first route; it seems that with polish, it will
 probably work in all cases, but the second route may be "nicer" in terms of code style
 and relationship with theory.
+
+#### Monday, July 8th
+I have been able to fix many of the cases from the previous week. However, many harder cases
+remain.
+
+I am leaving this link here that explains "foralls" quite nicely: 
+http://stackoverflow.com/questions/3071136/what-does-the-forall-keyword-in-haskell-ghc-do

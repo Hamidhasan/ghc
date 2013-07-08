@@ -9,4 +9,4 @@ import Prelude
 
 main :: IO ()
 main = do
-         print $ show &Int (read &Int "3")
+         print $ None &Int

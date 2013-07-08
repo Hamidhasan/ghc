@@ -986,7 +986,7 @@ mk_dict_err ctxt (ct, (matches, unifiers, safe_haskell))
                          origin                    -> Just origin
 
     no_inst_herald
-      | null givens && null matches = ptext (sLit "[Hamidhasan new] No instance for")
+      | null givens && null matches = ptext (sLit "No instance for")
       | otherwise                   = ptext (sLit "Could not deduce")
 
     drv_fixes = case orig of

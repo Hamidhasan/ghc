@@ -15,10 +15,10 @@ pairup_sig u w = (u, w)
 
 repeated_pair u = (u, u)
 
-partial_pair x = pairup_sig &Int x
+partial_pair x = pairup_sig &Int
 
 main :: IO ()
 main = do
-         print $ pairup_nosig &Int &Bool 5 True
+         print (pairup_nosig &Int &Bool (fromInteger 5) True)
          print $ pairup_sig &Bool &Int False 7
          print $ repeated_pair &Int 12

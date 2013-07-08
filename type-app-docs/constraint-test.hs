@@ -7,6 +7,12 @@
 module Main where
 import Prelude
 
+addOne :: Num a => a -> a
+addOne x = x + 1
+
+int = 5
+
 main :: IO ()
 main = do
-         print $ show &Int (read &Int "3")
+         print $ addOne &Int 7
+         print $ addOne &Int int

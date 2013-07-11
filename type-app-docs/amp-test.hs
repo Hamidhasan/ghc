@@ -7,19 +7,15 @@
 module Main where
 import Prelude
 
+x :: Int
+x = 5
 
-g :: a -> a
-g u = u
+y :: Bool
+y = True
 
---add :: Int -> Bool -> Int
-add x True = x + 1
-add x False = x - 1
-
--- This seems redundant, but not incorrect.
--- Perhaps it should give a warning?
---h :: Int -> Bool -> Int
-h x y = add &Int &Bool x y
+f :: a -> b -> (a,b)
+f u v = (u, v)
 
 main :: IO ()
-main = let x = 5 in
-       print $ h 5 True
+main = do 
+         print (f &Int &Bool x y)

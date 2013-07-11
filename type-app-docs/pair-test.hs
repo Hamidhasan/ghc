@@ -15,8 +15,6 @@ pairup_sig u w = (u, w)
 
 repeated_pair u = (u, u)
 
-partial_pair x = pairup_sig &Int
-
 main :: IO ()
 main = do
          print (pairup_nosig &Int &Bool (fromInteger 5) True)

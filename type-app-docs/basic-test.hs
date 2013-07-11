@@ -7,18 +7,9 @@
 module Main where
 import Prelude
 
-
-g :: a -> a
-g u = u
-
---f :: Int
-f = g &Int 5
-
 addOne :: Int -> Int
 addOne x = x + 1
 
 main :: IO ()
 main = do
-         print $ f
-         print $ g &Int 7
-         print $ addOne &Int 4
+         print (addOne 2)

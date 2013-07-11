@@ -140,7 +140,12 @@ mkCoreApp fun arg       = ASSERT2( isFunTy fun_ty, ppr fun $$ ppr arg )
                           mk_val_app fun arg arg_ty res_ty
                       where
                         fun_ty = exprType fun
-                        (arg_ty, res_ty) = splitFunTy fun_ty
+                        (arg_ty, res_ty) = case splitFunTy_maybe fun_ty of
+                                            Just (arg', res') -> (arg', res')
+                                            Nothing -> pprSorry "Hamidhasan Debug:" $
+                                                       text "mkCoreApp. fun:" <+> ppr fun <+> 
+                                                       text "fun_ty:" <+> ppr fun_ty $$
+                                                       text "arg:" <+> ppr arg
 
 -- | Construct an expression which represents the application of a number of
 -- expressions to another. The leftmost expression in the list is applied first
@@ -155,7 +160,18 @@ mkCoreApps orig_fun orig_args
     go fun fun_ty (arg     : args) = ASSERT2( isFunTy fun_ty, ppr fun_ty $$ ppr orig_fun $$ ppr orig_args )
                                      go (mk_val_app fun arg arg_ty res_ty) res_ty args
                                    where
-                                     (arg_ty, res_ty) = splitFunTy fun_ty
+                                     (arg_ty, res_ty) = case splitFunTy_maybe fun_ty of
+                                                         Just (arg', res') -> (arg', res')
+                                                         Nothing -> pprSorry "Hamidhasan Debug:" $
+                                                                    text "mkCoreApps. fun:"   <+>
+                                                                    ppr fun <+> text "fun_ty:" <+>
+                                                                    ppr fun_ty $$ text "arg:" <+>
+                                                                    ppr arg <+> text "args:"   <+>
+                                                                    ppr args
+ 
+--pprPanic "mkCoreApps problem: fun " $ 
+--                              ppr fun $$
+--                              text "arg:" <+> ppr arg
 
 -- | Construct an expression which represents the application of a number of
 -- expressions to that of a data constructor expression. The leftmost expression

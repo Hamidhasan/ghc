@@ -211,7 +211,10 @@ dsExpr (HsLamCase arg matches)
        ; return $ Lam arg_var $ bindNonRec discrim_var (Var arg_var) matching_code }
 
 dsExpr (HsApp fun arg)
-  = mkCoreAppDs <$> dsLExpr fun <*>  dsLExpr arg
+  = do { warnDs $ text "Desugaring App... fun:" <+> ppr fun <+> text "arg:" <+> ppr arg
+       ; mkCoreAppDs <$> dsLExpr fun <*> dsLExpr arg }
+ --Hamidhasan: DsSugarer/core is giving me some trouble. This may be the source of the problem.
+   -- Search for all uses of mkCoreApp. One of them is not being handled correctly.
 
 dsExpr (HsUnboundVar _) = panic "dsExpr: HsUnboundVar"
 \end{code}
@@ -256,10 +259,13 @@ will sort it out.
 \begin{code}
 dsExpr (OpApp e1 op _ e2)
   = -- for the type of y, we need the type of op's 2nd argument
-    mkCoreAppsDs <$> dsLExpr op <*> mapM dsLExpr [e1, e2]
+    do { warnDs $ text "Desugaring OpApp... e1:" <+> ppr e1 <+> text "op:" <+> ppr op <+>
+                  text "e2:" <+> ppr e2
+       ; mkCoreAppsDs <$> dsLExpr op <*> mapM dsLExpr [e1, e2] }
     
 dsExpr (SectionL expr op)       -- Desugar (e !) to ((!) e)
-  = mkCoreAppDs <$> dsLExpr op <*> dsLExpr expr
+  = do { warnDs $ text "Desugaring SectionL... expr:" <+> ppr expr <+> text "op:" <+> ppr op 
+       ; mkCoreAppDs <$> dsLExpr op <*> dsLExpr expr }
 
 -- dsLExpr (SectionR op expr)   -- \ x -> op x expr
 dsExpr (SectionR op expr) = do
@@ -270,6 +276,8 @@ dsExpr (SectionR op expr) = do
     y_core <- dsLExpr expr
     x_id <- newSysLocalDs x_ty
     y_id <- newSysLocalDs y_ty
+    warnDs $ text "Desugaring SectionR... core_op:" <+> ppr core_op <+> text "x_id y_id:" <+> 
+           ppr x_id <+> ppr y_id 
     return (bindNonRec y_id y_core $
             Lam x_id (mkCoreAppsDs core_op [Var x_id, Var y_id]))
 
@@ -328,6 +336,8 @@ dsExpr (HsIf mb_fun guard_expr then_expr else_expr)
        ; b2 <- dsLExpr else_expr
        ; case mb_fun of
            Just fun -> do { core_fun <- dsExpr fun
+                          ; warnDs $ text "Desugaring HsIf...mb_fun:" <+> ppr mb_fun <+> 
+                                     text "core_fun:" <+> ppr core_fun
                           ; return (mkCoreApps core_fun [pred,b1,b2]) }
            Nothing  -> return $ mkIfThenElse pred b1 b2 }
 
@@ -602,7 +612,7 @@ dsExpr (EWildPat      {})  = panic "dsExpr:EWildPat"
 dsExpr (EAsPat        {})  = panic "dsExpr:EAsPat"
 dsExpr (EViewPat      {})  = panic "dsExpr:EViewPat"
 dsExpr (ELazyPat      {})  = panic "dsExpr:ELazyPat"
-dsExpr (ETypeApp      {})  = panic "dsExpr:ETypeApp" --Hamidhasan TODO: check.
+dsExpr (ETypeApp      {})  = panic "dsExpr:ETypeApp Hamidhasan" --Hamidhasan TODO: check.
 dsExpr (HsDo          {})  = panic "dsExpr:HsDo"
 
 

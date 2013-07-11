@@ -381,8 +381,8 @@ So we use Nothing to mean "use the old built-in typing rule".
 
 Note [Explicit Type App]
 ~~~~~~~~~~~~~~~~~~~~~~~~
-Explicit type application is allows a programmer to explicitly declare the type
-of a polymorphic function's arguments, rather then letting them be inferred
+Explicit type application allows a programmer to explicitly declare the type
+of a polymorphic function's type variables, rather then letting them be inferred
 by the type checker. This is currently a work-in-progress feature, authored by
 Hamidhasan Ahmed.
 

@@ -262,3 +262,24 @@ remain.
 
 I am leaving this link here that explains "foralls" quite nicely: 
 http://stackoverflow.com/questions/3071136/what-does-the-forall-keyword-in-haskell-ghc-do
+
+I also met with my advisor today, and we discovered some new problems with the typechecker and
+how to fix them. Additionally, I need to start organizing and documenting my test cases to
+show why certain test cases are important, what use case/interesting property is being
+asserted in each, etc.
+
+#### Thursday, July 11th
+Over the past few days, I was able to fix most of the problems occuring within the typechecker
+portion of GHC, and my code passes through the typechecker...
+
+...only to hit a panic within the DeSugarer/Core transformation. For some reason, the
+function "coreSyn/MkCore:mkCoreApp" is getting a forall type, when it should only be
+receiving a function type (i.e., no type variables). It only happens in programs that
+contain explicit type application, it seems. 
+
+I could easily fix it by adding the case, but it seems that I am breaking an invariant or
+transformation somewhere - the function should not be given a foralltype, and yet it is
+somehow getting one (despite the explicit type application transformation!) 
+
+Debugging this section is fairly difficult, as I am not sure where the error lies - there
+is a problem with the handover from TC to DS, but it could be in either level, or both.

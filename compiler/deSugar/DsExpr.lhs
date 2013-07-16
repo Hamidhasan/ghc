@@ -216,6 +216,10 @@ dsExpr (HsApp fun arg)
  --Hamidhasan: DsSugarer/core is giving me some trouble. This may be the source of the problem.
    -- Search for all uses of mkCoreApp. One of them is not being handled correctly.
 
+dsExpr (ETypeApp (L _ (HsCoreTy ty)))  = return $ Type ty   --Hamidhasan TODO: check.
+dsExpr (ETypeApp badType) = pprPanic "dsExpr:ETypeApp" $ text "found a HsType other than HsCoreTy:"
+                                                         <+> ppr badType
+
 dsExpr (HsUnboundVar _) = panic "dsExpr: HsUnboundVar"
 \end{code}
 
@@ -612,7 +616,6 @@ dsExpr (EWildPat      {})  = panic "dsExpr:EWildPat"
 dsExpr (EAsPat        {})  = panic "dsExpr:EAsPat"
 dsExpr (EViewPat      {})  = panic "dsExpr:EViewPat"
 dsExpr (ELazyPat      {})  = panic "dsExpr:ELazyPat"
-dsExpr (ETypeApp      {})  = panic "dsExpr:ETypeApp Hamidhasan" --Hamidhasan TODO: check.
 dsExpr (HsDo          {})  = panic "dsExpr:HsDo"
 
 

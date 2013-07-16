@@ -38,5 +38,6 @@ intpair x y = pairup &Int x y
 
 main :: IO ()
 main = do
+          print $ pairup &Int 5 True          
           print $ intcons 7 []
       

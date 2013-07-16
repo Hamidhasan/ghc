@@ -364,6 +364,7 @@ data UserTypeCtxt
 			--	f :: <S> => a -> a
   | DataTyCtxt Name	-- Theta part of a data decl
 			--	data <S> => T a = MkT a
+                        -- Hamidhasan: may need to add one for EType context        
 \end{code}
 
 
@@ -1213,7 +1214,7 @@ any foralls.  E.g.
 	f :: (?x::Int) => Int -> Int
 
 \begin{code}
-isSigmaTy :: Type -> Bool  -- Hamidhasan: do I need to use this fun 
+isSigmaTy :: Type -> Bool  
 isSigmaTy ty | Just ty' <- tcView ty = isSigmaTy ty'
 isSigmaTy (ForAllTy _ _) = True
 isSigmaTy (FunTy a _)    = isPredTy a

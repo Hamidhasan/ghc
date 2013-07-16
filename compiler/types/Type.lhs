@@ -767,7 +767,7 @@ dropForAlls ty = snd (splitForAllTys ty)
 
 -- (mkPiType now in CoreUtils)
 
-applyTy, applyTys
+applyTy, applyTys - Hamidhasan - may need to use these
 ~~~~~~~~~~~~~~~~~
 
 \begin{code}

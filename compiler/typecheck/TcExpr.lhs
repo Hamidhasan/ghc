@@ -132,8 +132,9 @@ tcInfExpr :: HsExpr Name -> TcM (HsExpr TcId, TcRhoType)
 tcInfExpr (HsVar f) 	= tcInferId f
 tcInfExpr (HsPar e) 	= do { (e', ty) <- tcInferRhoNC e
                              ; return (HsPar e', ty) }
-tcInfExpr (HsApp e1 (L _ (ETypeApp ty))) = do { (ty', _) <- tcLHsType ty 
-                                              ; tcInferApp e1 [] [ty'] }
+--tcInfExpr (HsApp e1 (L _ (ETypeApp ty))) = do { (ty', _) <- tcLHsType ty 
+--                                              ; tcInferApp e1 [] [ty'] }
+tcInfExpr (HsApp e1 e2@(L _ (ETypeApp _))) = tcInferApp e1 [] [e2]
 tcInfExpr (HsApp e1 e2) = tcInferApp e1 [e2] []                                 
 tcInfExpr e             = tcInfer (tcExpr e)
 
@@ -163,9 +164,9 @@ tcExpr e res_ty | debugIsOn && isSigmaTy res_ty     -- Sanity check
 tcExpr (HsVar name)  res_ty = tcCheckId name res_ty
                  
 -- If we see an exp. type app as the first argument, put it in the other list
-tcExpr (HsApp e1 (L _ (ETypeApp ty))) res_ty = do { (ty', _) <- tcLHsType ty 
-                                                  ; tcApp e1 [] [ty'] res_ty }
-                             
+--tcExpr (HsApp e1 (L _ (ETypeApp ty))) res_ty = do { (ty', _) <- tcLHsType ty 
+--                                                  ; tcApp e1 [] [ty'] res_ty }
+tcExpr (HsApp e1 e2@(L _ (ETypeApp _))) res_ty = tcApp e1 [] [e2] res_ty
 tcExpr (HsApp e1 e2) res_ty = tcApp e1 [e2] [] res_ty
 
 tcExpr (HsLit lit)   res_ty = do { let lit_ty = hsLitType lit
@@ -241,7 +242,7 @@ tcExpr (ExprWithTySig expr sig_ty) res_ty
       ; (inst_wrap, rho) <- deeplyInstantiate ExprSigOrigin sig_tc_ty
       ; tcWrapResult (mkHsWrap inst_wrap inner_expr) rho res_ty }
 
-tcExpr (ETypeApp ty) res_ty
+tcExpr (ETypeApp ty@(L _ e)) res_ty
   = failWithTc (text "HAMIDHASAN: Type argument &" <> ppr ty <+>
                 text  " must be within function application.  res_ty: " <+> ppr res_ty)
         -- This is the syntax for type applications that I was planning
@@ -250,7 +251,8 @@ tcExpr (ETypeApp ty) res_ty
 	-- Can't eliminate it altogether from the parser, because the
 	-- same parser parses *patterns*.
         -- Hamidhasan: Have no fear, kindred spirit, I will implement it for you.
-        -- TODO: Type check ETypeApp
+        -- TODO: Type check ETypeApp do { ty' <- tcExpr ty
+        -- ; return (ETypeApp (tcExpr (unLoc ty) res_ty)) }
 
 tcExpr (HsUnboundVar v) res_ty
   = tcHole (rdrNameOcc v) res_ty
@@ -353,9 +355,10 @@ tcExpr (OpApp arg1 op fix arg2) res_ty
                op' fix 
                (mkLHsWrapCo co_a arg2') }
 
-  | otherwise
+  | otherwise             -- Hamidhasan TODO: Several infix and other, nonstandard function
+                          -- application defined here. May need to edit these later
   = do { traceTc "Non Application rule" (ppr op)
-       ; (op', op_ty) <- tcInferFun op
+       ; (op', op_ty, _) <- tcInferFun op
        ; (co_fn, arg_tys, op_res_ty) <- unifyOpFunTysWrap op 2 op_ty
        ; co_res <- unifyType op_res_ty res_ty
        ; [arg1', arg2'] <- tcArgs op [arg1, arg2] arg_tys
@@ -366,7 +369,7 @@ tcExpr (OpApp arg1 op fix arg2) res_ty
 --	\ x -> op x expr
  
 tcExpr (SectionR op arg2) res_ty
-  = do { (op', op_ty) <- tcInferFun op
+  = do { (op', op_ty, _) <- tcInferFun op
        ; (co_fn, [arg1_ty, arg2_ty], op_res_ty) <- unifyOpFunTysWrap op 2 op_ty
        ; co_res <- unifyType (mkFunTy arg1_ty op_res_ty) res_ty
        ; arg2' <- tcArg op (arg2, arg2_ty, 2)
@@ -374,7 +377,7 @@ tcExpr (SectionR op arg2) res_ty
          SectionR (mkLHsWrapCo co_fn op') arg2' } 
 
 tcExpr (SectionL arg1 op) res_ty
-  = do { (op', op_ty) <- tcInferFun op
+  = do { (op', op_ty, _) <- tcInferFun op
        ; dflags <- getDynFlags	    -- Note [Left sections]
        ; let n_reqd_args | xopt Opt_PostfixOperators dflags = 1
                          | otherwise                        = 2
@@ -957,16 +960,14 @@ tcApp fun args res_ty
 
 
 tcApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
-      -> [Type]                 -- Explicit type args
+      -> [LHsExpr Name]                 -- Explicit type args
       -> TcRhoType -> TcM (HsExpr TcId) -- Translated fun and args
 
 tcApp (L _ (HsPar e)) args etypes res_ty
   = tcApp e args etypes res_ty
 
-tcApp (L _ (HsApp e1 (L _ (ETypeApp ty)))) args etypes res_ty
-  = do { (etype, _) <- tcLHsType ty
-       ; tcApp e1 args (etype:etypes) res_ty }
-
+tcApp (L _ (HsApp e1 e2@(L _ (ETypeApp _)))) args etypes res_ty
+  = tcApp e1 args (e2:etypes) res_ty
 tcApp (L _ (HsApp e1 e2)) args etypes res_ty
   = tcApp e1 (e2:args) etypes res_ty	-- Accumulate the arguments
                                 -- Hamidhasan: This is where they accumulate
@@ -984,7 +985,7 @@ tcApp (L loc (HsVar fun)) args _ res_ty
 
 tcApp fun args etypes res_ty
   = do	{   -- Type-check the function
-	; (fun1, fun_tau) <- setLclTypeApps etypes (tcInferFun fun) 
+	; (fun1, fun_tau, etypesTc) <- setLclTypeApps etypes [] (tcInferFun fun) 
             --Hamidhasan: type app needs to be here
 
             -- Extract its argument types
@@ -1010,9 +1011,23 @@ tcApp fun args etypes res_ty
 	; args1 <- tcArgs fun args expected_arg_tys
 
         -- Assemble the result
-	; let fun2 = mkLHsWrapCo co_fun fun1
-              app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 args1)
+
+        -- Hamidhasan TODO: Make sure the resulting "app" has the explicit types
+        -- this way, it can be used to generate Core correctly; currently,
+        -- the explicit type apps are being "consumed" here and do not show up in DeSugarer
+        -- I don't think I actually need an ID for etypeids. Since the type constructor I am using
+        -- is actually existential and doesn't have one
+        --; etypeIds <- newSysLocalIds (fsLit "ety@") etypesTc
         
+        -- Need to make the ETypes from LHsExpr Name -> LHsExpr TcId
+        -- Note that this will modify the order of how the explicit types came in.
+        -- for example: f &Int x &Bool y will become
+        --              f &Int &Bool x y
+	
+        ; let fun2 = mkLHsWrapCo co_fun fun1
+              etypeArgs = zipWith tcTypeApp etypes etypesTc
+              app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 (etypeArgs ++ args1))
+
         ; if length etypes /= 0 
           then warnTc True $ text "Hamidhasan: App. Info: etypes: " <> ppr etypes <> 
                       text " expected_arg_tys: " <> ppr expected_arg_tys $$
@@ -1050,17 +1065,17 @@ tcInferApp fun args
         ; return (unLoc app, actual_res_ty) }
 -}
 tcInferApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
-           -> [Type]
+           -> [LHsExpr Name]
            -> TcM (HsExpr TcId, TcRhoType) -- Translated fun and args
 
-tcInferApp (L _ (HsPar e))                      args etypes = tcInferApp e args etypes
-tcInferApp (L _ (HsApp e1 (L _ (ETypeApp ty)))) args etypes = 
-           do { (etype, _) <- tcLHsType ty; tcInferApp e1 args (etype:etypes) }
-tcInferApp (L _ (HsApp e1 e2))                  args etypes = tcInferApp e1 (e2:args) etypes
+tcInferApp (L _ (HsPar e)) args etypes = tcInferApp e args etypes
+tcInferApp (L _ (HsApp e1 e2@(L _ (ETypeApp _)))) args etypes = 
+    tcInferApp e1 args (e2:etypes)
+tcInferApp (L _ (HsApp e1 e2)) args etypes = tcInferApp e1 (e2:args) etypes
 tcInferApp fun args etypes
   = -- Very like the tcApp version, except that there is
     -- no expected result type passed in
-    do	{ (fun1, fun_tau) <- setLclTypeApps etypes (tcInferFun fun) 
+    do	{ (fun1, fun_tau, etypes) <- setLclTypeApps etypes [] (tcInferFun fun) 
 	; (co_fun, expected_arg_tys, actual_res_ty) --Hamidhasan: typeapp needs to be here
 	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
 	; args1 <- tcArgs fun args expected_arg_tys
@@ -1069,13 +1084,13 @@ tcInferApp fun args etypes
         ; return (unLoc app, actual_res_ty) }
 ---------------- Hamidhasan: look at funs above and below
 
-tcInferFun :: LHsExpr Name -> TcM (LHsExpr TcId, TcRhoType)
+tcInferFun :: LHsExpr Name -> TcM (LHsExpr TcId, TcRhoType, [Type])
 -- Infer and instantiate the type of a function
 tcInferFun (L loc (HsVar name)) 
   = do { (fun, ty) <- setSrcSpan loc (tcInferId name)
        	       -- Don't wrap a context around a plain Id
-
-       ; return (L loc fun, ty) }
+       ; etypes <- getLclTypeApps
+       ; return (L loc fun, ty, etypes) }
 
 tcInferFun fun
   = do { (fun, fun_ty) <- tcInfer (tcMonoExpr fun)
@@ -1086,7 +1101,8 @@ tcInferFun fun
        ; fun_ty' <- zonkTcType fun_ty
 
        ; (wrap, rho) <- deeplyInstantiate AppOrigin fun_ty'
-       ; return (mkLHsWrap wrap fun, rho) }
+       ; etypes <- getLclTypeApps
+       ; return (mkLHsWrap wrap fun, rho, etypes) }
 
 {-
 -- New tcInferFun for explicit type application.
@@ -1135,6 +1151,35 @@ tcTupArgs args tys
     go (Missing {},   arg_ty) = return (Missing arg_ty)
     go (Present expr, arg_ty) = do { expr' <- tcPolyExpr expr arg_ty
 			           ; return (Present expr') }
+
+----------------
+-- This function sets the explicit type application and checks each type
+-- in the process.
+-- However, since it modifies the environment, I wanted to put it in
+-- TcRnMonad.lhs, but there, "tcLHsType" is not defined.
+
+-- I don't think this ultimately belongs here, but leaving it here for now.
+--  - Hamidhasan
+setLclTypeApps :: [LHsExpr Name] -> [Type] -> TcM a -> TcM a
+setLclTypeApps [] etypes thing_inside
+  = updLclEnv upd thing_inside
+  where 
+    upd env = env { tcl_etypes = reverse etypes }
+setLclTypeApps (((L _ (ETypeApp hsType))):hsTypes) etypes thing_inside
+  = do { (etype, _) <- tcLHsType hsType
+       ; setLclTypeApps hsTypes (etype:etypes) thing_inside }
+setLclTypeApps (expr:_) _ _ = pprPanic "setLclTypeApps" $ 
+                       text "Warning! setLclTypeApps is" <+>
+                       text "being applied to a non-type application " <+>
+                       text "expression, namely," $$ ppr expr
+
+-- this is such a shameless hack...argh
+tcTypeApp :: LHsExpr Name -> Type -> LHsExpr TcId
+tcTypeApp (L loc (ETypeApp _)) ty
+  = (L loc (ETypeApp (L loc (HsCoreTy ty))))
+tcTypeApp _ _ = pprPanic "tcTypeApp" $ text "tcTypeApp applied to an expression other than" <+>
+                                       text "an explicit type application"
+         
 
 ----------------
 unifyOpFunTysWrap :: LHsExpr Name -> Arity -> TcRhoType

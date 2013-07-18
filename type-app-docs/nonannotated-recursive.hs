@@ -8,6 +8,13 @@
 module Main where
 import Prelude
 
+{- This test case tests to see if recursion can work
+   in the case of nonannotation for a scoped type variable
+   case. Currently, this is not possible in GHC, but
+   explicit type application may be able to let the function
+  (in this case, mapSame) be recursive.
+-}
+
 mapSame :: forall b. (forall a. a -> a) -> [b] -> [b]
 mapSame _ [] = []
 mapSame fun (x:xs) = fun &b x : (mapSame &b fun xs)

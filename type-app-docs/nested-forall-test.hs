@@ -8,6 +8,13 @@
 module Main where
 import Prelude
 
+{- This test case tests nested foralls, to see if deep skolemisation
+   works correctly in conjunction with explicit type application.
+
+   Additionally, mapSame is slightly different, where it uses a
+   scoped type variable as an explicit type argument. 
+-}
+
 mapSame :: forall b. (forall a. a -> a) -> [b] -> [b]
 mapSame _ [] = []
 mapSame fun (x:xs) = fun &b x : (mapSame &b fun xs)

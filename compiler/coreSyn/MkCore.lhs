@@ -139,7 +139,7 @@ mkCoreApp fun (Coercion co) = App fun (Coercion co)
 mkCoreApp fun arg       = ASSERT2( isFunTy fun_ty, ppr fun $$ ppr arg )
                           mk_val_app fun arg arg_ty res_ty
                       where
-                        fun_ty = exprType fun
+                        fun_ty = exprType fun --Right here, its failing
                         (arg_ty, res_ty) = case splitFunTy_maybe fun_ty of
                                             Just (arg', res') -> (arg', res')
                                             Nothing -> pprSorry "Hamidhasan Debug:" $

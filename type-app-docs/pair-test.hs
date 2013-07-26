@@ -21,6 +21,7 @@ repeated_pair u = (u, u)
 
 main :: IO ()
 main = do
+         print (pairup_nosig (fromInteger 1) False)
          print (pairup_nosig &Int &Bool (fromInteger 5) True)
          print $ pairup_sig &Bool &Int False 7
          print $ repeated_pair &Int 12

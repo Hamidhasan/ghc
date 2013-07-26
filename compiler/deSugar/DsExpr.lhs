@@ -39,6 +39,8 @@ import CoreUtils
 import CoreFVs
 import MkCore
 
+import PprCore -- Hamidhasan REMOVE when done!
+
 import DynFlags
 import CostCentre
 import Id
@@ -192,11 +194,19 @@ dsExpr (HsIPVar _)            = panic "dsExpr: HsIPVar"
 dsExpr (HsLit lit)            = dsLit lit
 dsExpr (HsOverLit lit)        = dsOverLit lit
 
+--  = do { expr <- return (varToCoreExpr var)
+--       ; warnDs $ text "Desugaring HsVar... var:" <+> ppr var $$ text "expr:" <+>
+--                  pprCoreExpr expr
+--       ; return (expr) }           
+
 dsExpr (HsWrap co_fn e)
   = do { e' <- dsExpr e
        ; wrapped_e <- dsHsWrapper co_fn e'
        ; warn_id <- woptM Opt_WarnIdentities
        ; when warn_id $ warnAboutIdentities e' wrapped_e
+       ; warnDs $ text "Desugaring HsWrap... e: " <+> ppr e <+> text "e':" <+> ppr e'
+                $$ text "co_fn:" <+> ppr co_fn <+> text "wrapped_e:"
+                <+> pprCoreExpr wrapped_e 
        ; return wrapped_e }
 
 dsExpr (NegApp expr neg_expr) 
@@ -212,9 +222,9 @@ dsExpr (HsLamCase arg matches)
 
 dsExpr (HsApp fun arg)
   = do { warnDs $ text "Desugaring App... fun:" <+> ppr fun <+> text "arg:" <+> ppr arg
-       ; mkCoreAppDs <$> dsLExpr fun <*> dsLExpr arg }
- --Hamidhasan: DsSugarer/core is giving me some trouble. This may be the source of the problem.
-   -- Search for all uses of mkCoreApp. One of them is not being handled correctly.
+       ; expr <- mkCoreAppDs <$> dsLExpr fun <*> dsLExpr arg
+       ; warnDs $ text "Resulting core: " <+> pprCoreExpr expr
+       ; return expr}
 
 dsExpr (ETypeApp (L _ (HsCoreTy ty)))  = return $ Type ty   --Hamidhasan TODO: check.
 dsExpr (ETypeApp badType) = pprPanic "dsExpr:ETypeApp" $ text "found a HsType other than HsCoreTy:"

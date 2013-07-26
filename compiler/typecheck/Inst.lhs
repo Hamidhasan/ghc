@@ -82,7 +82,7 @@ emitWanteds origin theta = mapM (emitWanted origin) theta
 emitWanted :: CtOrigin -> TcPredType -> TcM EvVar
 emitWanted origin pred 
   = do { loc <- getCtLoc origin
-       ; ev  <- newWantedEvVar pred
+       ; ev  <- newWantedEvVar pred --Hamidhasan TODO: see what happens here
        ; emitFlat (mkNonCanonical loc (CtWanted { ctev_pred = pred, ctev_evar = ev }))
        ; return ev }
 
@@ -205,9 +205,18 @@ instCall :: CtOrigin -> [TcType] -> TcThetaType -> TcM HsWrapper
 
 instCall orig tys theta 
   = do	{ dict_app <- instCallConstraints orig theta
+        ; _ <- warnTc True $ text "instCall...tys:" <+> ppr tys <+>
+               text "theta:" <+> ppr theta
+               $$ text "dict_app:" <+> ppr dict_app               
 	; return (dict_app <.> mkWpTyApps tys) }
 
 ----------------
+-- Hamidhasan: Here is where the constraint solving is emitted! I can use this
+-- to emit the type application constraints to the call.
+
+-- Alternatively, I may have to modify the returned "HsWrapper" to include
+-- the constraints for the type application. I think its best to generate them here
+-- rather then threading them through core and having it failz0r
 instCallConstraints :: CtOrigin -> TcThetaType -> TcM HsWrapper
 -- Instantiates the TcTheta, puts all constraints thereby generated
 -- into the LIE, and returns a HsWrapper to enclose the call site.
@@ -223,9 +232,13 @@ instCallConstraints orig preds
     go pred 
      | Just (ty1, ty2) <- getEqPredTys_maybe pred -- Try short-cut
      = do  { co <- unifyType ty1 ty2
+           ; _ <- warnTc True $ text "callConstraints...EqPredTys: pred:" <+>
+                  ppr pred $$ text "ty1:" <+> ppr ty1 <+> text "ty2:" <+> ppr ty2
            ; return (EvCoercion co) }
      | otherwise
      = do { ev_var <- emitWanted orig pred
+          ; _ <- warnTc True $ text "instCallConstraints emitWanted pred:" <+>
+                 ppr pred <+> text "ev_var:" <+> ppr ev_var            
      	  ; return (EvId ev_var) }
 
 ----------------

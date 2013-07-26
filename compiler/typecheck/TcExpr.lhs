@@ -239,7 +239,7 @@ tcExpr (ExprWithTySig expr sig_ty) res_ty
       ; (inst_wrap, rho) <- deeplyInstantiate ExprSigOrigin sig_tc_ty
       ; tcWrapResult (mkHsWrap inst_wrap inner_expr) rho res_ty }
 
-tcExpr (ETypeApp ty@(L _ e)) res_ty
+tcExpr (ETypeApp ty@(L _ _)) res_ty
   = failWithTc (text "HAMIDHASAN: Type argument &" <> ppr ty <+>
                 text  " must be within function application.  res_ty: " <+> ppr res_ty)
         -- This is the syntax for type applications that I was planning
@@ -1025,8 +1025,8 @@ tcApp fun args etypes res_ty
               etypeArgs = zipWith tcTypeApp etypes etypesTc
               app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 (etypeArgs ++ args1))
 
-        ; if length etypes /= 0 
-          then warnTc True $ text "Hamidhasan: App. Info: etypes: " <> ppr etypes <> 
+        ; --if --length etypes /= 0 
+          _ <- warnTc True $ text "Hamidhasan: App. Info: etypes: " <> ppr etypes <> 
                       text " expected_arg_tys: " <> ppr expected_arg_tys $$
                       text " co_fun: " <> ppr co_fun <>
                       text ", funtau: " <> ppr fun_tau $$
@@ -1035,7 +1035,7 @@ tcApp fun args etypes res_ty
                       text " args1:" <+> ppr args1 <>
                       text ", fun2:" <+> ppr fun2 <>
                       text ", app:" <+> ppr app
-          else return ()
+          --else return ()
 
         ; return (unLoc app) }
 
@@ -1072,12 +1072,13 @@ tcInferApp (L _ (HsApp e1 e2)) args etypes = tcInferApp e1 (e2:args) etypes
 tcInferApp fun args etypes
   = -- Very like the tcApp version, except that there is
     -- no expected result type passed in
-    do	{ (fun1, fun_tau, etypes) <- setLclTypeApps etypes [] (tcInferFun fun) 
+    do	{ (fun1, fun_tau, etypesTc) <- setLclTypeApps etypes [] (tcInferFun fun) 
 	; (co_fun, expected_arg_tys, actual_res_ty) --Hamidhasan: typeapp needs to be here
 	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
 	; args1 <- tcArgs fun args expected_arg_tys
 	; let fun2 = mkLHsWrapCo co_fun fun1
-              app  = foldl mkHsApp fun2 args1
+              etypeArgs = zipWith tcTypeApp etypes etypesTc
+              app  = foldl mkHsApp fun2 (etypeArgs ++ args1)
         ; return (unLoc app, actual_res_ty) }
 ---------------- Hamidhasan: look at funs above and below
 
@@ -1309,24 +1310,24 @@ instantiateOuter orig id
          
        ; (_, tys, subst) <- tcInstTyVars tvs'
        ; doStupidChecks id tys
-      -- Substitute the typevariables into the theta earlier
       -- Union with the explicitTypeSubst. 
        ; subst' <- return (etypeSubst `unionTvSubst` subst)
        ; let theta' = substTheta subst' theta
        ; traceTc "Instantiating" (ppr id <+> text "with" <+> (ppr tys $$ ppr theta'))
-       ; if (null etypes) then return ()
-         else warnTc True $ text "instantiateOuter: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
-                       text " theta: " <> ppr theta <> text " tau: " <> ppr tau $$
-                       text " etypes: " <> ppr etypes <> text " tys: " <> ppr tys $$
-                       text " theta': " <> ppr theta' $$
-                       text " subst: " <> ppr subst <+> text " tvs': " <> ppr tvs' $$
-                       text " subst':" <+> ppr subst'
+
        ; case (etypeSubst, subst) of
          (TvSubst _ etenv, TvSubst _ tenv) -> 
            if (tenv `intersectsVarEnv` etenv) then warnTc True $ 
            text "Type environments are not disjoint: " <> ppr tenv $$ ppr etenv else return ()
-       ; wrap <- instCall orig tys theta'
- 
+       ; wrap <- instCall orig tys theta' --Hamidhasan TODO : constraint check here
+       ; --if (null etypes) then return () else
+          _ <-warnTc True $ text "instantiateOuter: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
+                       text " theta: " <> ppr theta <> text " tau: " <> ppr tau $$
+                       text " etypes: " <> ppr etypes <> text " tys: " <> ppr tys $$
+                       text " theta': " <> ppr theta' $$
+                       text " subst: " <> ppr subst <+> text " tvs': " <> ppr tvs' $$
+                       text " subst':" <+> ppr subst' $$
+                       text " wrap:" <+> pprHsWrapper (ppr wrap) wrap
        ; return (mkHsWrap wrap (HsVar id), TcType.substTy subst' tau) }
   where
     (tvs, theta, tau) = tcSplitSigmaTy (idType id)

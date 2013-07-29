@@ -283,3 +283,21 @@ somehow getting one (despite the explicit type application transformation!)
 
 Debugging this section is fairly difficult, as I am not sure where the error lies - there
 is a problem with the handover from TC to DS, but it could be in either level, or both.
+
+#### Monday, July 29th
+After more than a week of build fixing, numerous attempts at trying to fix the desugarer
+bugs, introducing more, and then squashing them and refactoring as we went along, I have
+a more complete version of the feature in place. Now, several more testcases pass, 
+including ones with constraints, and one of the "hard" ones.
+
+It seems that the scoped-type variable test cases are not passing and sometimes can cause
+the compiler to go into an infinite loop! Additionally, there are some problems with the 
+parser, and ampersand.
+
+Thus, the next few steps are to:
+1. Run the testsuite on the new compiler, with old code -> sanity check
+2. make this an extension in the lexer, instead of always-enabled (can do this later)
+3. Refactor parser code, make it better, not appear in parenthesis, not invalidate &&
+4. Check "scoped type variables" test cases ("nested-forall", "nonannotated-recursive")
+   and try to solve the bugs with them.
+5. Clean up documentation and comments within compiler code.

@@ -1022,8 +1022,9 @@ tcApp fun args etypes res_ty
         --              f &Int &Bool x y
 	
         ; let fun2 = mkLHsWrapCo co_fun fun1
-              etypeArgs = zipWith tcTypeApp etypes etypesTc
-              app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 (etypeArgs ++ args1))
+              --etypeArgs = zipWith tcTypeApp etypes etypesTc
+              etypeWrap = mkWpTyApps etypesTc
+              app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 (args1))
 
         ; --if --length etypes /= 0 
           _ <- warnTc True $ text "Hamidhasan: App. Info: etypes: " <> ppr etypes <> 
@@ -1034,7 +1035,8 @@ tcApp fun args etypes res_ty
                       text " co_res: " <+> ppr co_res $$
                       text " args1:" <+> ppr args1 <>
                       text ", fun2:" <+> ppr fun2 <>
-                      text ", app:" <+> ppr app
+                      text ", app:" <+> ppr app $$
+                      text " etype:" <+> ppr etypeWrap
           --else return ()
 
         ; return (unLoc app) }
@@ -1328,7 +1330,7 @@ instantiateOuter orig id
                        text " subst: " <> ppr subst <+> text " tvs': " <> ppr tvs' $$
                        text " subst':" <+> ppr subst' $$
                        text " wrap:" <+> pprHsWrapper (ppr wrap) wrap
-       ; return (mkHsWrap wrap (HsVar id), TcType.substTy subst' tau) }
+       ; return (mkHsWrap (wrap <.> (mkWpTyApps etypes)) (HsVar id), TcType.substTy subst' tau) }
   where
     (tvs, theta, tau) = tcSplitSigmaTy (idType id)
 

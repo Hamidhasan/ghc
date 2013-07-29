@@ -238,7 +238,7 @@ instCallConstraints orig preds
      | otherwise
      = do { ev_var <- emitWanted orig pred
           ; _ <- warnTc True $ text "instCallConstraints emitWanted pred:" <+>
-                 ppr pred <+> text "ev_var:" <+> ppr ev_var            
+                 ppr pred $+$ text "ev_var:" <+> ppr ev_var            
      	  ; return (EvId ev_var) }
 
 ----------------

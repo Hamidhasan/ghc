@@ -27,6 +27,6 @@ sid x = x
 
 main :: IO ()
 main = do
-         print pair &Int &Bool 3 True
-         print pair &Int 3 &Bool True
-         print mapSame &Int (+1) [1, 2, 3]
+         print $ pair &Int &Bool 3 True
+         print $ pair &Int 3 &Bool True
+         print $ mapSame &Int (+1) [1, 2, 3]

@@ -17,11 +17,9 @@ g x = undefined
 f :: Char
 f = g &Char True
 
-addOne :: Int -> Int
-addOne x = x + 1
 
 main :: IO ()
 main = do
          print $ f
+         print $ g &Char False
          print $ g False
-         print $ addOne &Int 4

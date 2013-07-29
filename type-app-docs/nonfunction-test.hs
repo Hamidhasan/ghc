@@ -16,4 +16,4 @@ import Prelude
 
 main :: IO ()
 main = do
-         print $ None &Int
+         print (Nothing &Int)

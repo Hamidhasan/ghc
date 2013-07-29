@@ -11,8 +11,11 @@ addOne :: Num a => a -> a
 addOne x = x + 1
  
 bool = False
-
+ -- TODO: The error message doesn't mention the &Bool
+ -- it mentions the "addOne" instead
 main :: IO ()
 main = do
+         print $ addOne &Bool 5
          print $ addOne &Bool True
          print $ addOne &Bool bool
+         

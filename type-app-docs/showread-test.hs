@@ -9,6 +9,6 @@ import Prelude
 
 main :: IO ()
 main = do
-         print $ show 3
-         print $ show &Int 5
- --        print $ show &Int (read &Int "7")
+         print $ show (read &Int "3")
+         print $ show &Int (read "5")
+         print $ show &Int (read &Int "7")

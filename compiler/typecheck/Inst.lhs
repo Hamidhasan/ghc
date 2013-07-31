@@ -205,11 +205,13 @@ instCall :: CtOrigin -> [TcType] -> TcThetaType -> TcM HsWrapper
 
 instCall orig tys theta 
   = do	{ dict_app <- instCallConstraints orig theta
-        ; _ <- warnTc True $ text "instCall...tys:" <+> ppr tys <+>
-               text "theta:" <+> ppr theta
-               $$ text "dict_app:" <+> ppr dict_app               
-	; return (dict_app <.> mkWpTyApps tys) }
+        ; return (dict_app <.> mkWpTyApps tys) }
 
+
+--; _ <- warnTc True $ text "instCall...tys:" <+> ppr tys <+>
+--               text "theta:" <+> ppr theta
+--               $$ text "dict_app:" <+> ppr dict_app               
+	
 ----------------
 -- Hamidhasan: Here is where the constraint solving is emitted! I can use this
 -- to emit the type application constraints to the call.
@@ -232,15 +234,17 @@ instCallConstraints orig preds
     go pred 
      | Just (ty1, ty2) <- getEqPredTys_maybe pred -- Try short-cut
      = do  { co <- unifyType ty1 ty2
-           ; _ <- warnTc True $ text "callConstraints...EqPredTys: pred:" <+>
-                  ppr pred $$ text "ty1:" <+> ppr ty1 <+> text "ty2:" <+> ppr ty2
            ; return (EvCoercion co) }
      | otherwise
      = do { ev_var <- emitWanted orig pred
-          ; _ <- warnTc True $ text "instCallConstraints emitWanted pred:" <+>
-                 ppr pred $+$ text "ev_var:" <+> ppr ev_var            
+           
      	  ; return (EvId ev_var) }
 
+{-          ; _ <- warnTc True $ text "instCallConstraints emitWanted pred:" <+>
+                 ppr pred $+$ text "ev_var:" <+> ppr ev_var
+          ; _ <- warnTc True $ text "callConstraints...EqPredTys: pred:" <+>
+                 ppr pred $$ text "ty1:" <+> ppr ty1 <+> text "ty2:" <+> ppr ty2
+-}
 ----------------
 instStupidTheta :: CtOrigin -> TcThetaType -> TcM ()
 -- Similar to instCall, but only emit the constraints in the LIE

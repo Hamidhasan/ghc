@@ -278,8 +278,7 @@ dsExpr (OpApp e1 op _ e2)
        ; mkCoreAppsDs <$> dsLExpr op <*> mapM dsLExpr [e1, e2] }
     
 dsExpr (SectionL expr op)       -- Desugar (e !) to ((!) e)
-  = do { warnDs $ text "Desugaring SectionL... expr:" <+> ppr expr <+> text "op:" <+> ppr op 
-       ; mkCoreAppDs <$> dsLExpr op <*> dsLExpr expr }
+  = mkCoreAppDs <$> dsLExpr op <*> dsLExpr expr
 
 -- dsLExpr (SectionR op expr)   -- \ x -> op x expr
 dsExpr (SectionR op expr) = do
@@ -290,8 +289,6 @@ dsExpr (SectionR op expr) = do
     y_core <- dsLExpr expr
     x_id <- newSysLocalDs x_ty
     y_id <- newSysLocalDs y_ty
-    warnDs $ text "Desugaring SectionR... core_op:" <+> ppr core_op <+> text "x_id y_id:" <+> 
-           ppr x_id <+> ppr y_id 
     return (bindNonRec y_id y_core $
             Lam x_id (mkCoreAppsDs core_op [Var x_id, Var y_id]))
 

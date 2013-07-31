@@ -486,10 +486,6 @@ ppr_expr (ExplicitTuple exprs boxity)
     punc (Missing {} : _) = comma
     punc []               = empty
 
-
---ppr_expr (ExplicitTyApp func types vars)
---  = panic "Hamidhasan: Need to implement pretty printing after syntax!"
-
 --avoid using PatternSignatures for stage1 code portability
 ppr_expr (HsLam matches)
   = pprMatches (LambdaExpr :: HsMatchContext id) matches

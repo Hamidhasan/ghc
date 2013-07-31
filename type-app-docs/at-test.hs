@@ -11,9 +11,9 @@ f :: a -> b -> (a,b)
 f u v = (u, v)
 
 g :: Int -> Int -> Int
-g u v= f @Int @Int u v
+g u v = f @Int @Int u v
 
-data Foo = Foo { first :: Int, second :: Int} deriving Show
+--data Foo = Foo { first :: Int, second :: Int} deriving Show
 
 main :: IO ()
 main = let x = 5 in

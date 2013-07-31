@@ -331,7 +331,6 @@ rnExpr e@EWildPat      = do { holes <- xoptM Opt_TypeHoles
 rnExpr e@(EAsPat {})   = patSynErr e
 rnExpr e@(EViewPat {}) = patSynErr e
 rnExpr e@(ELazyPat {}) = patSynErr e
---rnExpr e@(ETypeApp _) = patSynErr e --Hamidhasan: this is a temp fix
 \end{code}
 
 %************************************************************************

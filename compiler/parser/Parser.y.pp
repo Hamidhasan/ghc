@@ -1549,10 +1549,6 @@ aexp2   :: { LHsExpr RdrName }
         | INTEGER                       { sL (getLoc $1) (HsOverLit $! mkHsIntegral (getINTEGER $1) placeHolderType) }
         | RATIONAL                      { sL (getLoc $1) (HsOverLit $! mkHsFractional (getRATIONAL $1) placeHolderType) }
         
-        --Hamidhasan: Here are the expressions for explicit type application. May be need to move it
-        --up in the grammar so it doesn't parse in some cases, though we could check this later.
-        | '&' atype                     { LL $ ETypeApp $2 }
-        
         -- N.B.: sections get parsed by these next two productions.
         -- This allows you to write, e.g., '(+ 3, 4 -)', which isn't
         -- correct Haskell (you'd have to write '((+ 3), (4 -))')
@@ -1566,7 +1562,11 @@ aexp2   :: { LHsExpr RdrName }
         | '[' list ']'                  { LL (unLoc $2) }
         | '[:' parr ':]'                { LL (unLoc $2) }
         | '_'                           { L1 EWildPat }
-        
+
+        --Hamidhasan: Here are the expressions for explicit type application. May be need to move it
+        --up in the grammar so it doesn't parse in some cases, though we could check this later.
+        | '&' atype                     { L1 $ ETypeApp $2 }
+--        | '@' atype                      { L1 $ ETypeApp $2 }
         -- Template Haskell Extension
         | TH_ID_SPLICE          { L1 $ HsSpliceE (mkHsSplice 
                                         (L1 $ HsVar (mkUnqual varName 

@@ -1322,8 +1322,8 @@ instantiateOuter orig id
            if (tenv `intersectsVarEnv` etenv) then warnTc True $ 
            text "Type environments are not disjoint: " <> ppr tenv $$ ppr etenv else return ()
        ; wrap <- instCall orig tys theta' --Hamidhasan TODO : constraint check here
-       ; --if (null etypes) then return () else
-          _ <-warnTc True $ text "instantiateOuter: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
+       ; if (null etypes) then return () else
+          warnTc True $ text "instantiateOuter: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
                        text " theta: " <> ppr theta <> text " tau: " <> ppr tau $$
                        text " etypes: " <> ppr etypes <> text " tys: " <> ppr tys $$
                        text " theta': " <> ppr theta' $$

@@ -239,9 +239,9 @@ tcExpr (ExprWithTySig expr sig_ty) res_ty
       ; (inst_wrap, rho) <- deeplyInstantiate ExprSigOrigin sig_tc_ty
       ; tcWrapResult (mkHsWrap inst_wrap inner_expr) rho res_ty }
 
-tcExpr (ETypeApp ty@(L _ _)) res_ty
-  = failWithTc (text "HAMIDHASAN: Type argument &" <> ppr ty <+>
-                text  " must be within function application.  res_ty: " <+> ppr res_ty)
+tcExpr e@(ETypeApp _) res_ty
+  = failWithTc (text "Type argument" <+> ppr e <+>
+                text  "must be within function application. res_ty: " <+> ppr res_ty)
         -- This is the syntax for type applications that I was planning
 	-- but there are difficulties (e.g. what order for type args)
 	-- so it's not enabled yet.
@@ -1290,16 +1290,23 @@ instantiateOuter :: CtOrigin -> TcId -> TcM (HsExpr TcId, TcSigmaType)
 
 instantiateOuter orig id
   | null tvs && null theta
-  = return (HsVar id, tau)
+  = do { etypes <- getLclTypeApps
+       ; if (not $ null etypes) then
+           addErrTc $ text "Too many explicit types: provided" <+> speakNOf (length etypes) (text "type") <> 
+                 text ", but the function" <+> ppr id <+> text "has" <+> speakNOf (length tvs) (text "type variable") $$
+                 text "Hamidhasan: debug info: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
+                 text " theta: " <> ppr theta <> text " tau: " <> ppr tau
+         else return ()
+       ; return (HsVar id, tau) }
 
   | otherwise
   = do { etypes <- getLclTypeApps
        -- Create a TvSubst using zipOpenTvSubst. Then use this to subst into the Tau and Theta.
        -- May need to use "zipTopTvSubst" instead - check this!!
        
-       ; if (length etypes > length tvs) then warnTc True $ -- Eventually this will be a failure
-             text "Too many explicit types: provided " <> int (length etypes) <> 
-             text " but have " <> int (length tvs) <> text " type variables." $$
+       ; if (length etypes > length tvs) then addErrTc  $ -- Eventually this will be a failure
+             text "Too many explicit types: provided" <+> speakNOf (length etypes) (text "type") <> 
+             text ", but the function" <+> ppr id <+> text "has" <+> speakNOf (length tvs) (text "type variable") $$
              text "Hamidhasan: debug info: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
                        text " theta: " <> ppr theta <> text " tau: " <> ppr tau
          else return ()
@@ -1333,7 +1340,6 @@ instantiateOuter orig id
        ; return (mkHsWrap (wrap <.> (mkWpTyApps etypes)) (HsVar id), TcType.substTy subst' tau) }
   where
     (tvs, theta, tau) = tcSplitSigmaTy (idType id)
-
 --------------------------
 
 {-

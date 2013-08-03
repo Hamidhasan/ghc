@@ -21,6 +21,6 @@ import Prelude
 -- complex case in which it cannot.
 
 main :: IO ()
-main = let bool = (id &Bool )True in  -- Bool -> Bool
+main = let bool = id &Bool True in  -- Bool -> Bool
        if (bool) then print "True"
        else print "False"

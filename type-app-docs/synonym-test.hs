@@ -29,10 +29,9 @@ f _ = undefined
 
 main :: IO ()
 main = let foo = Foo 5 True :: Foo Int Bool  in
-       let oof = Foo 8 False :: Oof Bool Int in
+       let oof = Foo 5 True :: Oof Bool Int in
        do
-         print "foo"
-         foof <- f oof
-         ffoo <- f foo
+         foof <- return $ f oof
+         ffoo <- return $ f foo
          print $ foof == ffoo
          return ()

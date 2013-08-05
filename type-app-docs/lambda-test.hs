@@ -12,14 +12,6 @@ import Prelude
    their signatures, to see if they make a difference internally.
 -}
 
-pairup_nosig x y = (x, y)
-
-pairup_sig :: a -> b -> (a,b)
-pairup_sig u w = (u, w)
-
 main :: IO ()
 main = do
-         print (pairup_nosig (fromInteger 1) False)
-         print (pairup_nosig &Int &Bool (fromInteger 5) True)
-         print $ pairup_sig &Bool &Int False 7
-
+         print $ (\x -> x) &Int 12

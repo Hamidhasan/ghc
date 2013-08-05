@@ -7,14 +7,15 @@
 module Main where
 import Prelude
 
-{- This test case only partially applies explicit type application
-   allowing polymorphism for the second argument, in particular,
-   for the "pairup" and subsequently defined "intpair" function.
+{-
+ This test case only partially applies explicit type application
+ allowing polymorphism for the second argument, in particular,
+ for the "pairup" and subsequently defined "intpair" function.
    
-   This test case tests to see if explicit type application
-   can work alongside regular type inference if a function requires
-   more than one polymorphic argument types, and the programmer does
-   not want to define the type of all of those arguments.
+ This test case tests to see if explicit type application
+ can work alongside regular type inference if a function requires
+ more than one polymorphic argument types, and the programmer does
+ not want to define the type of all of those arguments.
 -}
 
 -- intcons should have type: Int -> ([Int] -> Int)

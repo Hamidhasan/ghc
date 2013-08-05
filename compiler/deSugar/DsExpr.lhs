@@ -3,7 +3,7 @@
 % (c) The GRASP/AQUA Project, Glasgow University, 1992-1998
 %
 
-Desugaring exporessions.
+Desugaring expressions.
 
 \begin{code}
 module DsExpr ( dsExpr, dsLExpr, dsLocalBinds, dsValBinds, dsLit ) where
@@ -38,8 +38,6 @@ import CoreSyn
 import CoreUtils
 import CoreFVs
 import MkCore
-
-import PprCore -- Hamidhasan REMOVE when done!
 
 import DynFlags
 import CostCentre
@@ -204,9 +202,9 @@ dsExpr (HsWrap co_fn e)
        ; wrapped_e <- dsHsWrapper co_fn e'
        ; warn_id <- woptM Opt_WarnIdentities
        ; when warn_id $ warnAboutIdentities e' wrapped_e
-       ; warnDs $ text "Desugaring HsWrap... e: " <+> ppr e <+> text "e':" <+> ppr e'
-                $$ text "co_fn:" <+> ppr co_fn <+> text "wrapped_e:"
-                <+> pprCoreExpr wrapped_e 
+      -- ; warnDs $ text "Desugaring HsWrap... e: " <+> ppr e <+> text "e':" <+> ppr e'
+      --          $$ text "co_fn:" <+> ppr co_fn <+> text "wrapped_e:"
+      --          <+> pprCoreExpr wrapped_e 
        ; return wrapped_e }
 
 dsExpr (NegApp expr neg_expr) 
@@ -221,9 +219,9 @@ dsExpr (HsLamCase arg matches)
        ; return $ Lam arg_var $ bindNonRec discrim_var (Var arg_var) matching_code }
 
 dsExpr (HsApp fun arg)
-  = do { warnDs $ text "Desugaring App... fun:" <+> ppr fun <+> text "arg:" <+> ppr arg
-       ; expr <- mkCoreAppDs <$> dsLExpr fun <*> dsLExpr arg
-       ; warnDs $ text "Resulting core: " <+> pprCoreExpr expr
+  = do  --{ warnDs $ text "Desugaring App... fun:" <+> ppr fun <+> text "arg:" <+> ppr arg
+       { expr <- mkCoreAppDs <$> dsLExpr fun <*> dsLExpr arg
+      -- ; warnDs $ text "Resulting core: " <+> pprCoreExpr expr
        ; return expr}
 
 dsExpr (ETypeApp (L _ (HsCoreTy ty)))  = return $ Type ty   --Hamidhasan TODO: check.
@@ -273,9 +271,9 @@ will sort it out.
 \begin{code}
 dsExpr (OpApp e1 op _ e2)
   = -- for the type of y, we need the type of op's 2nd argument
-    do { warnDs $ text "Desugaring OpApp... e1:" <+> ppr e1 <+> text "op:" <+> ppr op <+>
-                  text "e2:" <+> ppr e2
-       ; mkCoreAppsDs <$> dsLExpr op <*> mapM dsLExpr [e1, e2] }
+    do --{ warnDs $ text "Desugaring OpApp... e1:" <+> ppr e1 <+> text "op:" <+> ppr op <+>
+       --           text "e2:" <+> ppr e2
+       { mkCoreAppsDs <$> dsLExpr op <*> mapM dsLExpr [e1, e2] }
     
 dsExpr (SectionL expr op)       -- Desugar (e !) to ((!) e)
   = mkCoreAppDs <$> dsLExpr op <*> dsLExpr expr
@@ -347,8 +345,8 @@ dsExpr (HsIf mb_fun guard_expr then_expr else_expr)
        ; b2 <- dsLExpr else_expr
        ; case mb_fun of
            Just fun -> do { core_fun <- dsExpr fun
-                          ; warnDs $ text "Desugaring HsIf...mb_fun:" <+> ppr mb_fun <+> 
-                                     text "core_fun:" <+> ppr core_fun
+                         -- ; warnDs $ text "Desugaring HsIf...mb_fun:" <+> ppr mb_fun <+> 
+                         --            text "core_fun:" <+> ppr core_fun
                           ; return (mkCoreApps core_fun [pred,b1,b2]) }
            Nothing  -> return $ mkIfThenElse pred b1 b2 }
 

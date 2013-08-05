@@ -894,14 +894,18 @@ arithSeqEltType (Just fl) res_ty
 %*                                                                      *
 %************************************************************************
 
+Note [Threading Explicit Type Application]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In order for explicit types to be available to the function's application, but
+_not_ the [first-class function] arguments to the function being applied, 
+the explicit types have to be threaded through seperately until all collected,
+then they can be placed within the local environment.
+
+This is done through recursion, similar to the way the function's arguments
+are currently handled.
+
 \begin{code}
   
---Note: Threading Explicit Type Application
--- In order for explicit types to be available to the function application, but
--- _not_ the [first-class function] arguments to the function being applied, 
--- the explicit types have to be threaded through seperately until all collected, then
--- they can be placed within the monad.
-
 {-
 tcApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
       -> TcRhoType -> TcM (HsExpr TcId) -- Translated fun and args
@@ -983,7 +987,6 @@ tcApp (L loc (HsVar fun)) args _ res_ty
 tcApp fun args etypes res_ty
   = do	{   -- Type-check the function
 	; (fun1, fun_tau, etypesTc) <- setLclTypeApps etypes [] (tcInferFun fun) 
-            --Hamidhasan: type app needs to be here
 
             -- Extract its argument types
 	; (co_fun, expected_arg_tys, actual_res_ty)
@@ -994,16 +997,7 @@ tcApp fun args etypes res_ty
         -- Both actual_res_ty and res_ty are deeply skolemised
         ; co_res <- addErrCtxtM (funResCtxt True (unLoc fun) actual_res_ty res_ty) $
                     unifyType actual_res_ty res_ty
- 
-       -- co_res: the result coercion
-       -- actual_res_ty, res_ty: the result type
-       
-       -- fun1: the name of the function
-       -- funtau: the type of the entire function
-       -- co_fun: the coercion that has the type of the entire function
-       -- expected_arg_tys: a list of the argument types
-
-        
+                    
 	-- Typecheck the arguments
 	; args1 <- tcArgs fun args expected_arg_tys
 
@@ -1024,10 +1018,10 @@ tcApp fun args etypes res_ty
         ; let fun2 = mkLHsWrapCo co_fun fun1
               --etypeArgs = zipWith tcTypeApp etypes etypesTc
               etypeWrap = mkWpTyApps etypesTc
-              app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 (args1))
-
-        ; --if --length etypes /= 0 
-          _ <- warnTc True $ text "Hamidhasan: App. Info: etypes: " <> ppr etypes <> 
+              app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 args1)
+--  {-
+        ; if length etypes /= 0 then
+             warnTc True $ text "Hamidhasan: App. Info: etypes: " <> ppr etypes <> 
                       text " expected_arg_tys: " <> ppr expected_arg_tys $$
                       text " co_fun: " <> ppr co_fun <>
                       text ", funtau: " <> ppr fun_tau $$
@@ -1035,10 +1029,9 @@ tcApp fun args etypes res_ty
                       text " co_res: " <+> ppr co_res $$
                       text " args1:" <+> ppr args1 <>
                       text ", fun2:" <+> ppr fun2 <>
-                      text ", app:" <+> ppr app $$
-                      text " etype:" <+> ppr etypeWrap
-          --else return ()
-
+                      text ", app:" <+> ppr app
+          else return () 
+-- -}
         ; return (unLoc app) }
 
 mk_app_msg :: LHsExpr Name -> SDoc
@@ -1079,8 +1072,17 @@ tcInferApp fun args etypes
 	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
 	; args1 <- tcArgs fun args expected_arg_tys
 	; let fun2 = mkLHsWrapCo co_fun fun1
-              etypeArgs = zipWith tcTypeApp etypes etypesTc
-              app  = foldl mkHsApp fun2 (etypeArgs ++ args1)
+              app  = foldl mkHsApp fun2 args1
+        ; if length etypes /= 0 then
+             warnTc True $ text "Hamidhasan: InferApp. Info: etypes: " <> ppr etypes <> 
+                      text " expected_arg_tys: " <> ppr expected_arg_tys $$
+                      text " co_fun: " <> ppr co_fun <>
+                      text " actual_res_ty:" <+> ppr actual_res_ty $$
+                      text " args1:" <+> ppr args1 <>
+                      text ", fun2:" <+> ppr fun2 <>
+                      text ", app:" <+> ppr app
+          else return () 
+      
         ; return (unLoc app, actual_res_ty) }
 ---------------- Hamidhasan: look at funs above and below
 
@@ -1153,15 +1155,8 @@ tcTupArgs args tys
                                    ; return (Present expr') }
 
 ----------------
--- This function sets the explicit type application and checks each type
--- in the process.
--- However, since it modifies the environment, I wanted to put it in
--- TcRnMonad.lhs, but there, "tcLHsType" is not defined.
-
--- I don't think this ultimately belongs here, but leaving it here for now.
---  - Hamidhasan
 setLclTypeApps :: [LHsExpr Name] -> [Type] -> TcM a -> TcM a
-setLclTypeApps [] etypes thing_inside
+setLclTypeApps [] etypes thing_inside -- See Note [Set Local Type Applications]
   = updLclEnv upd thing_inside
   where 
     upd env = env { tcl_etypes = reverse etypes }
@@ -1173,12 +1168,12 @@ setLclTypeApps (expr:_) _ _ = pprPanic "setLclTypeApps" $
                        text "being applied to a non-type application " <+>
                        text "expression, namely," $$ ppr expr
 
--- this is such a shameless hack...argh
-tcTypeApp :: LHsExpr Name -> Type -> LHsExpr TcId
-tcTypeApp (L loc (ETypeApp _)) ty
-  = (L loc (ETypeApp (L loc (HsCoreTy ty))))
-tcTypeApp _ _ = pprPanic "tcTypeApp" $ text "tcTypeApp applied to an expression other than" <+>
-                                       text "an explicit type application"
+-- Hamidhasan this is such a shameless hack...argh
+--tcTypeApp :: LHsExpr Name -> Type -> LHsExpr TcId
+--tcTypeApp (L loc (ETypeApp _)) ty
+--  = (L loc (ETypeApp (L loc (HsCoreTy ty))))
+--tcTypeApp _ _ = pprPanic "tcTypeApp" $ text "tcTypeApp applied to an expression other than" <+>
+--                                       text "an explicit type application"
          
 
 ----------------
@@ -1199,6 +1194,15 @@ tcSyntaxOp orig (HsVar op) res_ty = do { (expr, rho) <- tcInferIdWithOrig orig o
 tcSyntaxOp _ other         _      = pprPanic "tcSyntaxOp" (ppr other)
 \end{code}
 
+Note [Set Local Type Applications]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+This function sets the explicit type application in the local
+environment and checks each type in the process, to see if the type
+is well-formed itself.
+
+However, since it modifies the environment, one could argue it should be in
+TcRnMonad.lhs, but there, "tcLHsType" is not defined (since TcType.lhs
+is not imported in TcRnMonad.lhs).
 
 Note [Push result type in]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1243,8 +1247,6 @@ tcInferId :: Name -> TcM (HsExpr TcId, TcRhoType)
 -- Infer type, and deeply instantiate
 tcInferId n = tcInferIdWithOrig (OccurrenceOf n) n
 
------------------------- --Hamidhasan: thread explicit types through here
------------------------- -- as a seperate arg. Or, thread it through the monad
 tcInferIdWithOrig :: CtOrigin -> Name -> TcM (HsExpr TcId, TcRhoType)
 -- Look up an occurrence of an Id, and instantiate it (deeply)
 
@@ -1292,29 +1294,27 @@ instantiateOuter orig id
   | null tvs && null theta
   = do { etypes <- getLclTypeApps
        ; if (not $ null etypes) then
-           addErrTc $ text "Too many explicit types: provided" <+> speakNOf (length etypes) (text "type") <> 
-                 text ", but the function" <+> ppr id <+> text "has" <+> speakNOf (length tvs) (text "type variable") $$
-                 text "Hamidhasan: debug info: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
-                 text " theta: " <> ppr theta <> text " tau: " <> ppr tau
+           addErrTc $ text "Too many explicit types: provided" <+> speakNOf (length etypes) (text "type") <>
+                 char ',' $$ text "but the function" <+> ppr id <+> text "has" <+> speakNOf (length tvs)
+                 (text "type variable") $$ text "Hamidhasan: debug info: id: " <> ppr id <> text " tvs: " <>
+                 ppr tvs $$ text " theta: " <> ppr theta <> text " tau: " <> ppr tau <+> text "etypes" <+> ppr etypes
          else return ()
        ; return (HsVar id, tau) }
 
   | otherwise
-  = do { etypes <- getLclTypeApps
-       -- Create a TvSubst using zipOpenTvSubst. Then use this to subst into the Tau and Theta.
-       -- May need to use "zipTopTvSubst" instead - check this!!
-       
-       ; if (length etypes > length tvs) then addErrTc  $ -- Eventually this will be a failure
-             text "Too many explicit types: provided" <+> speakNOf (length etypes) (text "type") <> 
-             text ", but the function" <+> ppr id <+> text "has" <+> speakNOf (length tvs) (text "type variable") $$
-             text "Hamidhasan: debug info: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
-                       text " theta: " <> ppr theta <> text " tau: " <> ppr tau
+  = do { etypes <- getLclTypeApps -- See Note [Explicit Type Application] consulting
+                                  -- this and other lines containing "etypeSomething"
+       ; if (length etypes > length tvs) then
+           addErrTc $ text "Too many explicit types: provided" <+> speakNOf (length etypes) (text "type") <>
+                 char ',' $$ text "but the function" <+> ppr id <+> text "has" <+> speakNOf (length tvs)
+                 (text "type variable") $$ text "Hamidhasan: debug info: id: " <> ppr id <> text " tvs: " <>
+                 ppr tvs $$ text " theta: " <> ppr theta <> text " tau: " <> ppr tau
          else return ()
 
        ; (tvsToSubst, tvs') <- return $ splitAt (length etypes) tvs
        ; etypeSubst <- return $ extendTvSubstList emptyTvSubst tvsToSubst etypes
 
---       ; (theta', tau') <- return $ (substTheta etypeSubst theta, TcType.substTy etypeSubst tau)
+--     ; (theta', tau') <- return $ (substTheta etypeSubst theta, TcType.substTy etypeSubst tau)
                            -- Check for explicit type application
          
        ; (_, tys, subst) <- tcInstTyVars tvs'
@@ -1329,14 +1329,14 @@ instantiateOuter orig id
            if (tenv `intersectsVarEnv` etenv) then warnTc True $ 
            text "Type environments are not disjoint: " <> ppr tenv $$ ppr etenv else return ()
        ; wrap <- instCall orig tys theta' --Hamidhasan TODO : constraint check here
-       ; if (null etypes) then return () else
+ {-      ; if (null etypes) then return () else
           warnTc True $ text "instantiateOuter: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
                        text " theta: " <> ppr theta <> text " tau: " <> ppr tau $$
                        text " etypes: " <> ppr etypes <> text " tys: " <> ppr tys $$
                        text " theta': " <> ppr theta' $$
                        text " subst: " <> ppr subst <+> text " tvs': " <> ppr tvs' $$
                        text " subst':" <+> ppr subst' $$
-                       text " wrap:" <+> pprHsWrapper (ppr wrap) wrap
+                       text " wrap:" <+> pprHsWrapper (ppr wrap) wrap -}
        ; return (mkHsWrap (wrap <.> (mkWpTyApps etypes)) (HsVar id), TcType.substTy subst' tau) }
   where
     (tvs, theta, tau) = tcSplitSigmaTy (idType id)
@@ -1421,6 +1421,29 @@ Here's a concrete example that does this (test tc200):
 
 Current solution: only do the "method sharing" thing for the first type/dict
 application, not for the iterated ones.  A horribly subtle point.
+
+Note [Explicit Type Application]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+First, we get the explicit types from the local environment.
+We then check to see if the programmer has provided more explicit types than
+type variables available. In this case, this is a user error, and a descriptive
+error message is generated.
+
+After this, we split the list of type variables into two sublists; the first
+list with the type variables we will explicitly substitute into (and we use
+the length of our explicit type list to determine this number).
+
+In order to preserve the invariant that a TvSubst should only be applied once,
+we combine the two TvSubsts. In theory, the two type variable substitutions
+should be disjoint, otherwise, there could be unintended behavior. I am not sure
+how they could possibly not be disjoint, but the warning is there for completeness'
+sake.
+
+Finally, we compose two wrappers: wrap, generated normally by instCall, and
+(mkWpTyApps etypes), made out of our explicit types. These two combine into
+a wrapper that wraps the resulting function with all the type information it
+needs. This allows for the explicit type information to propagate down to the
+Desugarer and Core correctly without any issues.
 
 \begin{code}
 doStupidChecks :: TcId

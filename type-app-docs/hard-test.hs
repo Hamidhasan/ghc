@@ -12,7 +12,7 @@ type family F a
 type instance F Char = Bool
 
 g :: F a -> a
-g x = undefined
+g _ = undefined
 
 f :: Char
 f = g &Char True
@@ -22,4 +22,3 @@ main :: IO ()
 main = do
          print $ f
          print $ g &Char False
-         print $ g False

@@ -14,11 +14,6 @@ import Prelude
    Additionally, mapSame is slightly different, where it uses a
    scoped type variable as an explicit type argument. 
 -}
-
-mapSame :: forall b. (forall a. a -> a) -> [b] -> [b]
-mapSame _ [] = []
-mapSame fun (x:xs) = fun &b x : (mapSame &b fun xs)
-
 pair :: forall a. a-> (forall b. b -> (a, b))
 pair x y = (x, y)
 
@@ -29,4 +24,4 @@ main :: IO ()
 main = do
          print $ pair &Int &Bool 3 True
          print $ pair &Int 3 &Bool True
-         print $ mapSame &Int (+1) [1, 2, 3]
+         print $ sid &(Int -> Int) (+ 5)

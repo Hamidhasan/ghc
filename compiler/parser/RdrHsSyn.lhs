@@ -533,7 +533,8 @@ checkContext (L l orig_t)
 
 -- We parse patterns as expressions and check for valid patterns below,
 -- converting the expression into a pattern at the same time.
-
+-- Hamidhasan : look here for help maybe?
+  
 checkPattern :: SDoc -> LHsExpr RdrName -> P (LPat RdrName)
 checkPattern msg e = checkLPat msg e
 
@@ -586,6 +587,7 @@ checkAPat msg loc e0 = do
 
    ELazyPat e         -> checkLPat msg e >>= (return . LazyPat)
    EAsPat n e         -> checkLPat msg e >>= (return . AsPat n)
+   
    -- view pattern is well-formed if the pattern is
    EViewPat expr patE -> checkLPat msg patE >>= (return . (\p -> ViewPat expr p placeHolderType))
    ExprWithTySig e t  -> do e <- checkLPat msg e

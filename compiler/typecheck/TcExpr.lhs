@@ -1017,7 +1017,7 @@ tcApp fun args etypes res_ty
 	
         ; let fun2 = mkLHsWrapCo co_fun fun1
               --etypeArgs = zipWith tcTypeApp etypes etypesTc
-              etypeWrap = mkWpTyApps etypesTc
+              --etypeWrap = mkWpTyApps etypesTc
               app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 args1)
 --  {-
         ; if length etypes /= 0 then
@@ -1294,7 +1294,7 @@ instantiateOuter orig id
   | null tvs && null theta
   = do { etypes <- getLclTypeApps
        ; if (not $ null etypes) then
-           addErrTc $ text "Too many explicit types: provided" <+> speakNOf (length etypes) (text "type") <>
+           warnTc True $ text "Too many explicit types: provided" <+> speakNOf (length etypes) (text "type") <>
                  char ',' $$ text "but the function" <+> ppr id <+> text "has" <+> speakNOf (length tvs)
                  (text "type variable") $$ text "Hamidhasan: debug info: id: " <> ppr id <> text " tvs: " <>
                  ppr tvs $$ text " theta: " <> ppr theta <> text " tau: " <> ppr tau <+> text "etypes" <+> ppr etypes
@@ -1305,7 +1305,7 @@ instantiateOuter orig id
   = do { etypes <- getLclTypeApps -- See Note [Explicit Type Application] consulting
                                   -- this and other lines containing "etypeSomething"
        ; if (length etypes > length tvs) then
-           addErrTc $ text "Too many explicit types: provided" <+> speakNOf (length etypes) (text "type") <>
+           warnTc True $ text "Too many explicit types: provided" <+> speakNOf (length etypes) (text "type") <>
                  char ',' $$ text "but the function" <+> ppr id <+> text "has" <+> speakNOf (length tvs)
                  (text "type variable") $$ text "Hamidhasan: debug info: id: " <> ppr id <> text " tvs: " <>
                  ppr tvs $$ text " theta: " <> ppr theta <> text " tau: " <> ppr tau

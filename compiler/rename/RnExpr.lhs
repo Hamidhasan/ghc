@@ -328,7 +328,19 @@ rnExpr e@EWildPat      = do { holes <- xoptM Opt_TypeHoles
                                 then return (hsHoleExpr, emptyFVs)
                                 else patSynErr e
                             }
-rnExpr e@(EAsPat {})   = patSynErr e
+rnExpr e@(EAsPat {}) = patSynErr e
+{- rnExpr e@(EAsPat fl@(L loc f) el@(L _ etype)) = patSynErr e
+  do { case etype of
+          HsVar id -> pprSorry "encountered HsVar" $ ppr el $$ text "id:" <+> ppr id
+          HsLit _ -> pprSorry "encountered HsLit" $ ppr el
+          HsApp _ _ -> pprSorry "encountered HsApp" $ ppr el
+          HsPar _ -> pprSorry "encountered HsPar" $ ppr el
+          HsUnboundVar _ -> pprSorry "encountered HsUnboundVar" $ ppr el
+          _ -> pprSorry "encountered some other hexpr" $ ppr el
+     ; rnExpr (HsApp (L loc (HsVar f)) el) }
+                              -- Hamidhasan - later, only allow if extension is on
+                              -- similar to above -}
+  
 rnExpr e@(EViewPat {}) = patSynErr e
 rnExpr e@(ELazyPat {}) = patSynErr e
 \end{code}

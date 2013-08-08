@@ -16,10 +16,16 @@ import Prelude
   (in this case, mapSame) be recursive.
 -}
 
-mapSame :: forall b. (forall a. a -> a) -> [b] -> [b]
+-- mapSame :: forall a b. (a -> b) -> [a] -> [b]
+mapSame :: forall b . (forall a. a -> a) -> [b] -> [b]
 mapSame _ [] = []
-mapSame fun (x:xs) = (fun &b x) : (mapSame &b fun xs)
+mapSame fun (x:xs) = (fun &b x) : (mapSame fun xs)
+
+plusOne :: Num a => a -> a
+plusOne x = x + 1
 
 main :: IO ()
 main = do
-         print $ mapSame &Int (+1) [1, 2, 3]
+         print $ mapSame (id) [1, 2, 3]
+--         print $ mapSame &Float (id) [1, 2, 3]
+         print $ mapSame &Int (plusOne) [1, 2, 3]

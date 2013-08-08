@@ -257,6 +257,10 @@ the declaration "g True" would be ill-typed, even though
 the needed type is "&Char", but because type families
 are a relatively new feature, this is ill-typed.
 
+Normally, when f has the type signature of "Char", g True
+works. This fails, however, when omitted - answer requires
+the type application in order to compile.
+
 However, the result of answer is still Prelude.undefined.
 TODO: This may require some more investigation.
 
@@ -273,7 +277,7 @@ g :: F a -> a
 g _ = undefined
 
 f :: Char
-f = g &Char True
+f = g True
 
 answer = g &Char False
 

@@ -15,7 +15,7 @@ g :: F a -> a
 g _ = undefined
 
 f :: Char
-f = g &Char True
+f = g True
 
 
 main :: IO ()

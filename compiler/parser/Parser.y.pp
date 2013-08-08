@@ -1516,7 +1516,8 @@ hpc_annot :: { Located (FastString,(Int,Int),(Int,Int)) }
                                                  }
 
 fexp    :: { LHsExpr RdrName }
-        : fexp aexp                            { LL $ HsApp $1 $2 }
+        : fexp atexp                           { LL $ HsApp $1 $2 }
+        | fexp aexp                            { LL $ HsApp $1 $2 }
         | aexp                                 { $1 }
 
 --        : fexp '&' etypes                      { LL $ HsApp $1 $3 }  
@@ -1529,10 +1530,15 @@ fexp    :: { LHsExpr RdrName }
 -- I think fexp stands for "function expression"
 -- and aexp stands for ... application expression? not sure. 
 
-aexp    :: { LHsExpr RdrName }
-        : qvar '@' aexp                 { LL $ EAsPat $1 $3 }
-        | '~' aexp                      { LL $ ELazyPat $2 }
+aexp    :: { LHsExpr RdrName }                     
+        : '~' aexp                      { LL $ ELazyPat $2 }
         | aexp1                 { $1 }
+
+-- A special rule for handling type applications versus as patterns.
+-- They need to be the same precedence, or one will bind stronger than the other. 
+atexp   :: { LHsExpr RdrName }             
+        : qvar '@' aexp                 { LL $ EAsPat $1 $3 }
+        | '@' atype                      { LL $ ETypeApp $2 }
 
 aexp1   :: { LHsExpr RdrName }
         : aexp1 '{' fbinds '}'  {% do { r <- mkRecConstrOrUpdate $1 (comb2 $2 $4) $3
@@ -1565,8 +1571,8 @@ aexp2   :: { LHsExpr RdrName }
 
         --Hamidhasan: Here are the expressions for explicit type application. May be need to move it
         --up in the grammar so it doesn't parse in some cases, though we could check this later.
-        | '&' atype                     { L1 $ ETypeApp $2 }
---        | '@' atype                      { L1 $ ETypeApp $2 }
+--        | '&' atype                     { LL $ ETypeApp $2 }
+--        | '@' atype                      { LL $ ETypeApp $2 }
         -- Template Haskell Extension
         | TH_ID_SPLICE          { L1 $ HsSpliceE (mkHsSplice 
                                         (L1 $ HsVar (mkUnqual varName 

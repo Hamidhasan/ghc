@@ -236,7 +236,7 @@ tcExpr (ExprWithTySig expr sig_ty) res_ty
 
       ; let inner_expr = ExprWithTySigOut (mkLHsWrap gen_fn expr') sig_ty
 
-      ; (inst_wrap, rho) <- deeplyInstantiate ExprSigOrigin sig_tc_ty
+      ; (inst_wrap, rho) <- deeplyInstantiate ExprSigOrigin [] sig_tc_ty
       ; tcWrapResult (mkHsWrap inst_wrap inner_expr) rho res_ty }
 
 tcExpr e@(ETypeApp _) res_ty
@@ -986,7 +986,7 @@ tcApp (L loc (HsVar fun)) args _ res_ty
 
 tcApp fun args etypes res_ty
   = do	{   -- Type-check the function
-	; (fun1, fun_tau, etypesTc) <- setLclTypeApps etypes [] (tcInferFun fun) 
+	; (fun1, fun_tau, etypesTc) <- checkLclTypeApps etypes [] (tcInferFun fun) 
 
             -- Extract its argument types
 	; (co_fun, expected_arg_tys, actual_res_ty)
@@ -1067,7 +1067,7 @@ tcInferApp (L _ (HsApp e1 e2)) args etypes = tcInferApp e1 (e2:args) etypes
 tcInferApp fun args etypes
   = -- Very like the tcApp version, except that there is
     -- no expected result type passed in
-    do	{ (fun1, fun_tau, etypesTc) <- setLclTypeApps etypes [] (tcInferFun fun) 
+    do	{ (fun1, fun_tau, etypesTc) <- checkLclTypeApps etypes [] (tcInferFun fun) 
 	; (co_fun, expected_arg_tys, actual_res_ty) --Hamidhasan: typeapp needs to be here
 	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
 	; args1 <- tcArgs fun args expected_arg_tys
@@ -1102,7 +1102,7 @@ tcInferFun fun
          -- We can see the rank-2 type of the lambda in time to genrealise e
        ; fun_ty' <- zonkTcType fun_ty
 
-       ; (wrap, rho) <- deeplyInstantiate AppOrigin fun_ty'
+       ; (wrap, rho) <- deeplyInstantiate AppOrigin [] fun_ty' -- Hamidhasan
        ; etypes <- getLclTypeApps
        ; return (mkLHsWrap wrap fun, rho, etypes) }
 
@@ -1155,16 +1155,16 @@ tcTupArgs args tys
                                    ; return (Present expr') }
 
 ----------------
-setLclTypeApps :: [LHsExpr Name] -> [Type] -> TcM a -> TcM a
-setLclTypeApps [] etypes thing_inside -- See Note [Set Local Type Applications]
+checkLclTypeApps :: [LHsExpr Name] -> [Type] -> TcM a -> TcM a
+checkLclTypeApps [] etypes thing_inside -- See Note [Set Local Type Applications]
   = updLclEnv upd thing_inside
   where 
     upd env = env { tcl_etypes = reverse etypes }
-setLclTypeApps (((L _ (ETypeApp hsType))):hsTypes) etypes thing_inside
+checkLclTypeApps (((L _ (ETypeApp hsType))):hsTypes) etypes thing_inside
   = do { (etype, _) <- tcLHsType hsType
-       ; setLclTypeApps hsTypes (etype:etypes) thing_inside }
-setLclTypeApps (expr:_) _ _ = pprPanic "setLclTypeApps" $ 
-                       text "Warning! setLclTypeApps is" <+>
+       ; checkLclTypeApps hsTypes (etype:etypes) thing_inside }
+checkLclTypeApps (expr:_) _ _ = pprPanic "checkLclTypeApps" $ 
+                       text "Warning! checkLclTypeApps is" <+>
                        text "being applied to a non-type application " <+>
                        text "expression, namely," $$ ppr expr
 
@@ -1252,8 +1252,11 @@ tcInferIdWithOrig :: CtOrigin -> Name -> TcM (HsExpr TcId, TcRhoType)
 
 tcInferIdWithOrig orig id_name
   = do { id <- lookup_id
-       ; (id_expr, id_rho) <- instantiateOuter orig id
-       ; (wrap, rho) <- deeplyInstantiate orig id_rho
+       ; (id_expr, id_rho, etypes) <- instantiateOuter orig id
+       ; (wrap, rho) <- deeplyInstantiate orig etypes id_rho -- here we go Hamidhasan
+       ; if (null etypes) then return ()
+         else warnTc True $ text "tcInferIdWithOrig...id_expr:" <+> ppr id_expr <+> text "id_rho:" <+> ppr id_rho
+                       $$ text "wrap:" <+> ppr wrap <+> text "rho:" <+> ppr rho
        ; return (mkHsWrap wrap id_expr, rho) }
   where
     lookup_id :: TcM TcId
@@ -1282,7 +1285,7 @@ tcInferIdWithOrig orig id_name
       | otherwise                  = return ()
 
 ------------------------
-instantiateOuter :: CtOrigin -> TcId -> TcM (HsExpr TcId, TcSigmaType)
+instantiateOuter :: CtOrigin -> TcId -> TcM (HsExpr TcId, TcSigmaType, [Type])
 -- Do just the first level of instantiation of an Id
 --   a) Deal with method sharing
 --   b) Deal with stupid checks
@@ -1299,7 +1302,7 @@ instantiateOuter orig id
                  (text "type variable") $$ text "Hamidhasan: debug info: id: " <> ppr id <> text " tvs: " <>
                  ppr tvs $$ text " theta: " <> ppr theta <> text " tau: " <> ppr tau <+> text "etypes" <+> ppr etypes
          else return ()
-       ; return (HsVar id, tau) }
+       ; return (HsVar id, tau, []) }
 
   | otherwise
   = do { etypes <- getLclTypeApps -- See Note [Explicit Type Application] consulting
@@ -1311,9 +1314,9 @@ instantiateOuter orig id
                  ppr tvs $$ text " theta: " <> ppr theta <> text " tau: " <> ppr tau
          else return ()
 
-       ; (tvsToSubst, tvs') <- return $ splitAt (length etypes) tvs
+       ; (tvsToSubst, tvs') <- return $ splitAtList etypes tvs
        ; etypeSubst <- return $ extendTvSubstList emptyTvSubst tvsToSubst etypes
-
+       ; (appliedETypes, remainingETypes) <- return $ splitAtList tvs etypes
 --     ; (theta', tau') <- return $ (substTheta etypeSubst theta, TcType.substTy etypeSubst tau)
                            -- Check for explicit type application
          
@@ -1337,9 +1340,10 @@ instantiateOuter orig id
                        text " subst: " <> ppr subst <+> text " tvs': " <> ppr tvs' $$
                        text " subst':" <+> ppr subst' $$
                        text " wrap:" <+> pprHsWrapper (ppr wrap) wrap -}
-       ; return (mkHsWrap (wrap <.> (mkWpTyApps etypes)) (HsVar id), TcType.substTy subst' tau) }
+       ; return (mkHsWrap (wrap <.> mkWpTyApps appliedETypes) (HsVar id), TcType.substTy subst' tau, remainingETypes) }
   where
     (tvs, theta, tau) = tcSplitSigmaTy (idType id)
+
 --------------------------
 
 {-

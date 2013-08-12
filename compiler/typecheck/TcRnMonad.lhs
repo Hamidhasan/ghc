@@ -1113,11 +1113,11 @@ addLclTypeApp etype thing_inside
     upd env = env { tcl_etypes = (etype : tcl_etypes env) }
 
 
---setLclTypeApps :: [Type] -> TcM a -> TcM a
---setLclTypeApps etypes thing_inside
---  = updLclEnv upd thing_inside
---  where
---    upd env = env { tcl_etypes = etypes }
+setLclTypeApps :: [Type] -> TcM a -> TcM a
+setLclTypeApps etypes thing_inside
+  = updLclEnv upd thing_inside
+  where
+    upd env = env { tcl_etypes = etypes }
 
 -- Note - Setting Explicit Type Application
 {- This is a bit frustrating, but in order to actually uncurry the 

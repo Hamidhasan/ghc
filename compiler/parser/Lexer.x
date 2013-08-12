@@ -513,7 +513,7 @@ data Token
   | ITbang
   | ITstar
   | ITdot
-  | ITamper                     -- for Explicit Type App
+--  | ITamper                     -- Hamidhasan for Explicit Type App
 
   | ITbiglam                    -- GHC-extension symbols
 
@@ -684,7 +684,7 @@ reservedSymsFM = listToUFM $
        ,("=>",  ITdarrow,   always)
        ,("-",   ITminus,    always)
        ,("!",   ITbang,     always)
-       ,("&",   ITamper,    always)    -- Hamidhasan explicit ty app
+--       ,("&",   ITamper,    always)    -- Hamidhasan explicit ty app
 
         -- For data T (a::*) = MkT
        ,("*", ITstar, always) -- \i -> kindSigsEnabled i || tyFamEnabled i)
@@ -1872,6 +1872,8 @@ explicitNamespacesBit :: Int
 explicitNamespacesBit = 29
 lambdaCaseBit :: Int
 lambdaCaseBit = 30
+explicitTypeApplicationBit :: Int
+explicitTypeApplicationBit = 31
 
 
 always :: Int -> Bool
@@ -1927,6 +1929,9 @@ explicitNamespacesEnabled :: Int -> Bool
 explicitNamespacesEnabled flags = testBit flags explicitNamespacesBit
 lambdaCaseEnabled :: Int -> Bool
 lambdaCaseEnabled flags = testBit flags lambdaCaseBit
+
+explicitTypeApplicationEnabled :: Int -> Bool
+explicitTypeApplicationEnabled flags = testBit flags explicitTypeApplication
 
 -- PState for parsing options pragmas
 --

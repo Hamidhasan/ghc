@@ -22,6 +22,6 @@ sid x = x
 
 main :: IO ()
 main = do
-         print $ pair &Int &Bool 3 True
-         print $ pair &Int 3 &Bool True
-  --       print $ sid &(Int -> Int) (+ 5)
+         print $ pair 5 False
+         print $ pair @Int @Bool 3 True
+         print $ sid @(Int -> Integer) (id)

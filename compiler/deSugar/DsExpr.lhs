@@ -219,9 +219,9 @@ dsExpr (HsLamCase arg matches)
        ; return $ Lam arg_var $ bindNonRec discrim_var (Var arg_var) matching_code }
 
 dsExpr (HsApp fun arg)
-  = do  --{ warnDs $ text "Desugaring App... fun:" <+> ppr fun <+> text "arg:" <+> ppr arg
-       { expr <- mkCoreAppDs <$> dsLExpr fun <*> dsLExpr arg
-      -- ; warnDs $ text "Resulting core: " <+> pprCoreExpr expr
+  = do { warnDs $ text "Desugaring App... fun:" <+> ppr fun <+> text "arg:" <+> ppr arg
+       ; expr <- mkCoreAppDs <$> dsLExpr fun <*> dsLExpr arg
+       ; warnDs $ text "Resulting core: " <+> ppr expr
        ; return expr}
 
 dsExpr (ETypeApp (L _ (HsCoreTy ty)))  = return $ Type ty   --Hamidhasan TODO: check.

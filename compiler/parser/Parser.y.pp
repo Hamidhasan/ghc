@@ -1539,7 +1539,7 @@ aexp    :: { LHsExpr RdrName }
 atexp   :: { LHsExpr RdrName }             
         : qvar '@' aexp                 { LL $ EAsPat $1 $3 }
         | '@' atype                      { LL $ ETypeApp $2 }
-
+ 
 aexp1   :: { LHsExpr RdrName }
         : aexp1 '{' fbinds '}'  {% do { r <- mkRecConstrOrUpdate $1 (comb2 $2 $4) $3
                                       ; checkRecordSyntax (LL r) }}

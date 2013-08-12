@@ -164,7 +164,7 @@ deeplySkolemise ty
 
   | otherwise
   = return (idHsWrapper, [], [], ty)
-
+{-
 deeplyInstantiate :: CtOrigin -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
 --   Int -> forall a. a -> a  ==>  (\x:Int. [] x alpha) :: Int -> alpha
 -- In general if
@@ -177,12 +177,62 @@ deeplyInstantiate orig ty
   = do { (_, tys, subst) <- tcInstTyVars tvs
        ; ids1  <- newSysLocalIds (fsLit "di") (substTys subst arg_tys)
        ; wrap1 <- instCall orig tys (substTheta subst theta)
+       ; warnTc True $ text "Deeply instantiate...arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+>
+         ppr tvs $$ text "theta:" <+> ppr theta <+> text "rho:" <+> ppr rho $$ text "tys:" <+>
+         ppr tys <+> text "subst:" <+> ppr subst $$ text "ids1:" <+> ppr ids1 <+> text "wrap1:"
+         <+> ppr wrap1
        ; (wrap2, rho2) <- deeplyInstantiate orig (substTy subst rho)
        ; return (mkWpLams ids1 
                     <.> wrap2
                     <.> wrap1 
                     <.> mkWpEvVarApps ids1,
                  mkFunTys arg_tys rho2) }
+
+  | otherwise = return (idHsWrapper, ty)
+-}
+
+deeplyInstantiate :: CtOrigin -> [Type] -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
+--   Int -> forall a. a -> a  ==>  (\x:Int. [] x alpha) :: Int -> alpha
+-- In general if
+-- if    deeplyInstantiate ty = (wrap, rho)
+-- and   e :: ty
+-- then  wrap e :: rho
+
+deeplyInstantiate orig etypes ty
+  | Just (arg_tys, tvs, theta, rho) <- tcDeepSplitSigmaTy_maybe ty
+  = do { (tvsToSubst, tvs') <- return $ splitAtList etypes tvs
+       ; etypeSubst <- return $ extendTvSubstList emptyTvSubst tvsToSubst etypes
+       ; (_, remainingETypes) <- return $ splitAtList tvs etypes
+
+       ; (_, tys, subst) <- tcInstTyVars tvs'
+
+       ; subst' <- return $ etypeSubst `unionTvSubst` subst
+       ; case (etypeSubst, subst) of
+         (TvSubst _ etenv, TvSubst _ tenv) -> 
+           if (tenv `intersectsVarEnv` etenv) then failWithTc $ 
+           text "Type environments are not disjoint: " <> ppr tenv $$ ppr etenv else return ()
+                                                                                     
+       ; ids1  <- newSysLocalIds (fsLit "di") (substTys subst' arg_tys)
+       ; wrap1 <- instCall orig tys (substTheta subst' theta)
+       ; warnTc True $ text "Deeply instantiate...arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+>
+         ppr tvs $$ text "theta:" <+> ppr theta <+> text "rho:" <+> ppr rho $$ text "tys:" <+>
+         ppr tys <+> text "subst:" <+> ppr subst $$ text "ids1:" <+> ppr ids1 <+> text "wrap1:"
+         <+> ppr wrap1 <+> text "subst'" <+> ppr subst' $$ text "etypes:" <+> ppr etypes
+         <+> text "remaining etypes:" <+> ppr remainingETypes
+      {- ; if (not $ null etypes) then pprSorry "deeplyInstantiate" $
+                                     text "Deeply instantiate...arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+>
+         ppr tvs $$ text "theta:" <+> ppr theta <+> text "rho:" <+> ppr rho $$ text "tys:" <+>
+         ppr tys <+> text "subst:" <+> ppr subst $$ text "ids1:" <+> ppr ids1 <+> text "wrap1:" <+> text "subst':" <+> ppr subst'
+         <+> ppr wrap1 $$ text "etypes:" <+> ppr etypes
+         else return () -}
+              
+       ; (wrap2, rho2) <- deeplyInstantiate orig remainingETypes (substTy subst' rho)
+       ; return (mkWpLams ids1 
+                    <.> wrap2
+                    <.> wrap1
+                    <.> mkWpTyApps etypes --wrapping in the etypes
+                    <.> mkWpEvVarApps ids1,
+                 mkFunTys arg_tys rho2) } 
 
   | otherwise = return (idHsWrapper, ty)
 \end{code}

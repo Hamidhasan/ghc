@@ -24,4 +24,4 @@ main :: IO ()
 main = do
          print $ pair 5 False
          print $ pair @Int @Bool 3 True
-         print $ sid @(Int -> Integer) (id)
+         print $ (sid @(Int -> Integer) (id)) 5

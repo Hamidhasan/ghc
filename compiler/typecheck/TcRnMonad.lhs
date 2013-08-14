@@ -1106,14 +1106,14 @@ setLclTypeEnv lcl_env thing_inside
 
 -- Hamidhasan: These 3 functions are for setting, getting,
 -- and appending type app information
-addLclTypeApp :: Type -> TcM a -> TcM a
+addLclTypeApp :: Maybe Type -> TcM a -> TcM a
 addLclTypeApp etype thing_inside
   = updLclEnv upd thing_inside
   where
     upd env = env { tcl_etypes = (etype : tcl_etypes env) }
 
 
-setLclTypeApps :: [Type] -> TcM a -> TcM a
+setLclTypeApps :: [Maybe Type] -> TcM a -> TcM a
 setLclTypeApps etypes thing_inside
   = updLclEnv upd thing_inside
   where
@@ -1142,7 +1142,7 @@ setLclTypeApps (expr:_) _ _ = pprPanic $ text "Warning! setLclTypeApps is" <+>
                        text "expression, namely," $$ ppr expr
 -}                                
 
-getLclTypeApps :: TcM [Type]
+getLclTypeApps :: TcM [Maybe Type]
 getLclTypeApps = do {env <- getLclEnv; return (tcl_etypes env)}
 
 traceTcConstraints :: String -> TcM ()

@@ -745,8 +745,8 @@ init_strtoken drop f span buf len =
 
 begin :: Int -> Action
 begin code _span _str _len = do pushLexState code; lexToken
-
-pop :: Action
+                             
+pop :: Action                                   -- Hamidhasan TODO perhaps look here
 pop _span _buf _len = do _ <- popLexState
                          lexToken
 
@@ -950,6 +950,8 @@ close_brace span _str _len = do
 qvarid, qconid :: StringBuffer -> Int -> Token
 qvarid buf len = ITqvarid $! splitQualName buf len False
 qconid buf len = ITqconid $! splitQualName buf len False
+
+-- Hamidhasan - splitting qualified names
 
 splitQualName :: StringBuffer -> Int -> Bool -> (FastString,FastString)
 -- takes a StringBuffer and a length, and returns the module name
@@ -1931,7 +1933,7 @@ lambdaCaseEnabled :: Int -> Bool
 lambdaCaseEnabled flags = testBit flags lambdaCaseBit
 
 explicitTypeApplicationEnabled :: Int -> Bool
-explicitTypeApplicationEnabled flags = testBit flags explicitTypeApplication
+explicitTypeApplicationEnabled flags = testBit flags explicitTypeApplicationBit
 
 -- PState for parsing options pragmas
 --

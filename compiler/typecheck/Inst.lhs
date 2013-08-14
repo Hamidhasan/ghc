@@ -16,6 +16,7 @@ The @Inst@ type: dictionaries or method instances
 module Inst ( 
        deeplySkolemise, 
        deeplyInstantiate, instCall, instStupidTheta,
+       createExplicitSubst,
        emitWanted, emitWanteds,
 
        newOverloadedLit, mkOverLit, 
@@ -191,7 +192,7 @@ deeplyInstantiate orig ty
   | otherwise = return (idHsWrapper, ty)
 -}
 
-deeplyInstantiate :: CtOrigin -> [Type] -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
+deeplyInstantiate :: CtOrigin -> [Maybe Type] -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
 --   Int -> forall a. a -> a  ==>  (\x:Int. [] x alpha) :: Int -> alpha
 -- In general if
 -- if    deeplyInstantiate ty = (wrap, rho)
@@ -200,11 +201,9 @@ deeplyInstantiate :: CtOrigin -> [Type] -> TcSigmaType -> TcM (HsWrapper, TcRhoT
 
 deeplyInstantiate orig etypes ty
   | Just (arg_tys, tvs, theta, rho) <- tcDeepSplitSigmaTy_maybe ty
-  = do { (tvsToSubst, tvs') <- return $ splitAtList etypes tvs
-       ; etypeSubst <- return $ extendTvSubstList emptyTvSubst tvsToSubst etypes
-       ; (_, remainingETypes) <- return $ splitAtList tvs etypes
+  = do { (remainingETypes, tvs', etypeSubst) <- return $ createExplicitSubst etypes tvs ([], [], emptyTvSubst)
 
-       ; (_, tys, subst) <- tcInstTyVars tvs'
+       ; (_, tys, subst) <- tcInstTyVarsETypes tvs' -- See Note [Instantiating TyVars with Explicit Types]
 
        ; subst' <- return $ etypeSubst `unionTvSubst` subst
        ; case (etypeSubst, subst) of
@@ -214,12 +213,12 @@ deeplyInstantiate orig etypes ty
                                                                                      
        ; ids1  <- newSysLocalIds (fsLit "di") (substTys subst' arg_tys)
        ; wrap1 <- instCall orig tys (substTheta subst' theta)
-       ; warnTc True $ text "Deeply instantiate...arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+>
+      {-  ; warnTc True $ text "Deeply instantiate...arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+>
          ppr tvs $$ text "theta:" <+> ppr theta <+> text "rho:" <+> ppr rho $$ text "tys:" <+>
          ppr tys <+> text "subst:" <+> ppr subst $$ text "ids1:" <+> ppr ids1 <+> text "wrap1:"
          <+> ppr wrap1 <+> text "subst'" <+> ppr subst' $$ text "etypes:" <+> ppr etypes
          <+> text "remaining etypes:" <+> ppr remainingETypes
-      {- ; if (not $ null etypes) then pprSorry "deeplyInstantiate" $
+       ; if (not $ null etypes) then pprSorry "deeplyInstantiate" $
                                      text "Deeply instantiate...arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+>
          ppr tvs $$ text "theta:" <+> ppr theta <+> text "rho:" <+> ppr rho $$ text "tys:" <+>
          ppr tys <+> text "subst:" <+> ppr subst $$ text "ids1:" <+> ppr ids1 <+> text "wrap1:" <+> text "subst':" <+> ppr subst'
@@ -230,11 +229,46 @@ deeplyInstantiate orig etypes ty
        ; return (mkWpLams ids1 
                     <.> wrap2
                     <.> wrap1
-                    <.> mkWpTyApps etypes --wrapping in the etypes
+                 --   <.> mkWpTyApps appliedETypes --wrapping in the etypes
                     <.> mkWpEvVarApps ids1,
                  mkFunTys arg_tys rho2) } 
 
   | otherwise = return (idHsWrapper, ty)
+
+{-
+createExplicitSubst :: [Maybe Type] -> [TyVar] -> ([Type], [TyVar], TvSubst) -> ([Type], [TyVar], TvSubst)
+                       -- returns applied explicit types, remaining tyvars, and the tvSubst
+createExplicitSubst [] [] (app, rem, subst) = (reverse app, reverse rem, subst)
+createExplicitSubst ((Just ety):etys) (tv:tvs) (app, rem, subst) = --if there is a type, we add it to the subst
+  createExplicitSubst etys tvs (ety:app, rem, extendTvSubst subst tv ety)
+createExplicitSubst (Nothing:etys) (tv:tvs) (app, rem, subst) = -- if there is no type - "@_" - we add it to tvs
+  createExplicitSubst etys tvs (app, tv:rem, subst)             -- and we "throw away" the Nothing
+createExplicitSubst [] (tv:tvs) (app, rem, subst) =
+  createExplicitSubst [] tvs (app, tv:rem, subst)
+createExplicitSubst (_:_) [] (app, rem, subst) = (reverse app, reverse rem, subst)
+-}
+
+createExplicitSubst :: [Maybe Type] -> [TyVar] ->
+                       ([Maybe Type], [Either Type TyVar], TvSubst) ->
+                       ([Maybe Type], [Either Type TyVar], TvSubst)
+                       -- returns remaining explicit types, Either etypes OR tyvars, and the tvSubst
+                       -- The "either list" is handled by tcInstTyVarsETypes - this preserves correct wrapping order
+createExplicitSubst [] [] (remEtys, etyORvars, subst) = (reverse remEtys, reverse etyORvars, subst)
+createExplicitSubst ((Just ety):etys) (tv:tvs) (remEtys, etyORvars, subst) = --if there is a type, we add it to the subst
+  createExplicitSubst etys tvs (remEtys, (Left ety):etyORvars, extendTvSubst subst tv ety)
+  
+createExplicitSubst (Nothing:etys) (tv:tvs) (remEtys, etyORvars, subst) = -- if there is no type - "@_" - we add it to tvs
+  createExplicitSubst etys tvs (remEtys, (Right tv):etyORvars, subst)             -- and we "throw away" the Nothing
+  
+createExplicitSubst [] (tv:tvs) (remEtys, etyORvars, subst) =
+  createExplicitSubst [] tvs (remEtys, (Right tv):etyORvars, subst)
+  
+createExplicitSubst (ety:etys) [] (remEtys, etyORvars, subst) =
+  createExplicitSubst etys [] (ety:remEtys, etyORvars, subst)
+
+-- Hamidhasan TODO : need to check the length of etypes vs. type variables. and report an appropriate error message
+-- a bit tricky because of nesting.
+
 \end{code}
 
 
@@ -255,6 +289,9 @@ instCall :: CtOrigin -> [TcType] -> TcThetaType -> TcM HsWrapper
 
 instCall orig tys theta 
   = do	{ dict_app <- instCallConstraints orig theta
+        ; _ <- warnTc True $ text "instCall...tys:" <+> ppr tys <+>
+               text "theta:" <+> ppr theta
+               $$ text "dict_app:" <+> ppr dict_app                                
         ; return (dict_app <.> mkWpTyApps tys) }
 
 
@@ -263,7 +300,7 @@ instCall orig tys theta
 --               $$ text "dict_app:" <+> ppr dict_app               
 	
 ----------------
--- Hamidhasan: Here is where the constraint solving is emitted! I can use this
+-- Hamidhasan : Here is where the constraint solving is emitted! I can use this
 -- to emit the type application constraints to the call.
 
 -- Alternatively, I may have to modify the returned "HsWrapper" to include
@@ -284,10 +321,15 @@ instCallConstraints orig preds
     go pred 
      | Just (ty1, ty2) <- getEqPredTys_maybe pred -- Try short-cut
      = do  { co <- unifyType ty1 ty2
+           ; _ <- warnTc True $ text "callConstraints...EqPredTys: pred:" <+>
+                 ppr pred $$ text "ty1:" <+> ppr ty1 <+> text "ty2:" <+> ppr ty2
+                 
            ; return (EvCoercion co) }
      | otherwise
      = do { ev_var <- emitWanted orig pred
-           
+          ; _ <- warnTc True $ text "instCallConstraints emitWanted pred:" <+>
+                 ppr pred $+$ text "ev_var:" <+> ppr ev_var
+
      	  ; return (EvId ev_var) }
 
 {-          ; _ <- warnTc True $ text "instCallConstraints emitWanted pred:" <+>

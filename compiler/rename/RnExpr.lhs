@@ -299,9 +299,12 @@ rnExpr (HsMultiIf ty alts)
   = do { (alts', fvs) <- mapFvRn (rnGRHS IfAlt rnLExpr) alts
        ; return (HsMultiIf ty alts', fvs) }
 
-rnExpr (ETypeApp a) --Hamidhasan: check this: changed from legacy HsType code
+rnExpr (ETypeApp (Just a)) --Hamidhasan: check this: changed from legacy HsType code
   = rnLHsType HsTypeCtx a	`thenM` \ (t, fvT) -> 
-    return (ETypeApp t, fvT)
+    return (ETypeApp (Just t), fvT)
+
+rnExpr (ETypeApp Nothing)
+  = return (ETypeApp Nothing, emptyFVs) 
 
 rnExpr (ArithSeq _ _ seq)
   = do { opt_OverloadedLists <- xoptM Opt_OverloadedLists

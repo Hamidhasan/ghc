@@ -40,8 +40,8 @@ module TcMType (
 
   --------------------------------
   -- Instantiation
-  tcInstTyVars, tcInstSigTyVars, newSigTyVar,
-  tcInstType, 
+  tcInstTyVars, tcInstSigTyVars, newSigTyVar, tcInstTyVarsETypes,
+  tcInstType,
   tcInstSkolTyVars, tcInstSkolTyVarsLoc, tcInstSuperSkolTyVars,
   tcInstSkolTyVarsX, tcInstSuperSkolTyVarsX,
   tcInstSkolTyVar, tcInstSkolType,
@@ -473,8 +473,76 @@ tcInstTyVarX subst tyvar
               kind   = substTy subst (tyVarKind tyvar)
               new_tv = mkTcTyVar name kind details 
         ; return (extendTvSubst subst tyvar (mkTyVarTy new_tv), new_tv) }
+
+
+-- These 4 functions below are essentially the same as the above tcInstTyVar series,
+-- except that they thread explicit types in between the new type variables.
+-- See Note [Instantiating TyVars with Explicit Types]
+tcInstTyVarsETypes :: [Either Type TKVar] -> TcM ([TcTyVar], [TcType], TvSubst)
+tcInstTyVarsETypes etypesORtyvars = tcInstTyVarsETypesX emptyTvSubst etypesORtyvars
+
+tcInstTyVarsETypesX :: TvSubst -> [Either Type TKVar] -> TcM ([TcTyVar], [TcType], TvSubst)
+tcInstTyVarsETypesX subst etypesORtyvars =
+  do { (subst', etypesORtyvars') <- mapAccumLM tcInstTyVarETypes subst etypesORtyvars
+     ; (tyvars', tyvarsANDetypes) <- return $ resolveETypesTyvars etypesORtyvars' ([], [])
+     ; return (tyvars', tyvarsANDetypes, subst') }
+
+tcInstTyVarETypes :: TvSubst -> Either Type TKVar -> TcM (TvSubst, Either Type TcTyVar)
+tcInstTyVarETypes subst (Left ety)
+  = return (subst, Left ety)
+tcInstTyVarETypes subst (Right tyvar)
+  = do  { uniq <- newUnique
+        ; details <- newMetaDetails TauTv
+        ; let name   = mkSystemName uniq (getOccName tyvar)
+              kind   = substTy subst (tyVarKind tyvar)
+              new_tv = mkTcTyVar name kind details 
+        ; return (extendTvSubst subst tyvar (mkTyVarTy new_tv), Right new_tv) }
+
+resolveETypesTyvars :: [Either Type TcTyVar] -> ([TcTyVar], [TcType])
+                       -> ([TcTyVar], [TcType])
+resolveETypesTyvars [] (tyvars, bothTypes) = (reverse tyvars, reverse bothTypes)
+resolveETypesTyvars (Left ety:eithers) (tyvars, bothTypes) =
+  resolveETypesTyvars eithers (tyvars, ety:bothTypes)
+resolveETypesTyvars (Right tyvar:eithers) (tyvars, bothTypes) =
+  resolveETypesTyvars eithers (tyvar:tyvars, (mkTyVarTy tyvar):bothTypes)
+
 \end{code}
 
+Hamidhasan Note [Instantiating TyVars with Explicit Types]
+
+Note [Instantiating TyVars with Explicit Types]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In order to handle explicit type application correctly, by generating a
+well-formed wrapper that correctly maps explicit types and type variables
+in the correct order, we create a similar tcInstTyVar set of functions that
+threads both explicit types and type variables through until the type
+variables are instantiated into TcTypes, in which the explicit types
+are interleaved between them in the order that the programmer intended.
+
+This interleaving is necessary (and practically impossible to do anywhere else)
+so that the typechecker can generate Type Application HsWrappers in the
+correct order. Otherwise, we end up with incorrect type applications in core.
+For example:
+
+  quad :: a -> b -> c -> d -> (a, b, c, d)
+  quad x y = (x, y)
+
+  silly :: (a, Bool, Char, b)
+  silly = quad @_ @Bool @Char @_ 5 True 'a' "Hello" 
+
+We should generate the first of the following, but can easily end up with some
+mismatched applications:
+
+  quad @Integer @Bool @Char @String 5 True 'a' "Hello" -- what we want to generate
+
+  quad @Bool @Char @Integer @String 5 True 'a' "Hello" -- if we wrap explicit types first,
+                                                       -- then the resolved type variables
+
+  quad @Integer @String @Bool @Char 5 True 'a' "Hello" -- if we wrap resolved type variables,
+                                                       -- then explicit types
+
+Thus, the wrappers must be interleaved deep within the flow of the typechecker.
+This is most conveniently done here.
 
 %************************************************************************
 %*									*

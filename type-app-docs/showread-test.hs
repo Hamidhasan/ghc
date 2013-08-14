@@ -24,6 +24,6 @@ necessary in order for the answers to typecheck.
 
 main :: IO ()
 main = do
-         print $ show (read &Int "3")
-         print $ show &Integer (read "5")
-         print $ show &Int (read &Int "7")
+         print $ show (read @Int "3")
+         print $ show @Float (read "5")
+         print $ show @Integer (read @Integer "7")

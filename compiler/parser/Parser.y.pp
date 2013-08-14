@@ -320,7 +320,7 @@ incorrect.
  '-<<'          { L _ ITLarrowtail }            -- for arrow notation
  '>>-'          { L _ ITRarrowtail }            -- for arrow notation
  '.'            { L _ ITdot }
- '&'            { L _ ITamper }                 -- for explicit type application 
+-- '&'            { L _ ITamper }                 -- Hamidhasan for explicit type application 
 
  '{'            { L _ ITocurly }                        -- special symbols
  '}'            { L _ ITccurly }
@@ -1537,9 +1537,10 @@ aexp    :: { LHsExpr RdrName }
 -- A special rule for handling type applications versus as patterns.
 -- They need to be the same precedence, or one will bind stronger than the other. 
 atexp   :: { LHsExpr RdrName }             
-        : qvar '@' aexp                 { LL $ EAsPat $1 $3 }
-        | '@' atype                      { LL $ ETypeApp $2 }
- 
+        : qvar '@' aexp                  { LL $ EAsPat $1 $3 }
+        | '@' atype                      { LL $ ETypeApp (Just $2) }
+        | '@' '_'                        { LL $ ETypeApp (Nothing) }
+
 aexp1   :: { LHsExpr RdrName }
         : aexp1 '{' fbinds '}'  {% do { r <- mkRecConstrOrUpdate $1 (comb2 $2 $4) $3
                                       ; checkRecordSyntax (LL r) }}

@@ -19,32 +19,33 @@ import Prelude
 -}
 
 -- intcons should have type: Int -> ([Int] -> Int)
-intcons a = (:) &Int a
+intcons a = (:) @Int a
 
 -- Another thing to consider: explicit partial.
 -- Should it simply be omitted, or should we include
--- a &_ indication?
+-- a @_ indication?
 pairup :: a -> b -> (a,b)
 pairup x y = (x, y)
 
 -- what will Haskell infer the type of this function to be?
 -- my guess: 
 -- intpair :: Int -> a -> (Int, a)
-intpair x y = pairup &Int x y
+intpair x y = pairup @Int x y
 
 -- What about the validity of these:
--- intpair x y = pairup &Int x y
--- intpair x y = pairup &Int x &_ y
--- intpair x y = (pairup &Int x) y
--- intpair x y = (pairup &Int x) &Bool y
+-- intpair x y = pairup @Int x y
+-- intpair x y = pairup @Int x @_ y
+-- intpair x y = (pairup @Int x) y
+-- intpair x y = (pairup @Int x) @Bool y
 
--- intpair x y = pairup &Int &_
+-- intpair x y = pairup @Int @_
 
+partpair = pairup @Int @Bool
 
 ----------------------------------------------------------------
 
 main :: IO ()
 main = do
-          print $ pairup &Int 5 True          
+          print $ pairup @Int 5 True          
           print $ intcons 7 []
-      
+          print $ partpair @Int 5 False

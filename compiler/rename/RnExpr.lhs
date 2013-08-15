@@ -299,12 +299,21 @@ rnExpr (HsMultiIf ty alts)
   = do { (alts', fvs) <- mapFvRn (rnGRHS IfAlt rnLExpr) alts
        ; return (HsMultiIf ty alts', fvs) }
 
-rnExpr (ETypeApp (Just a)) --Hamidhasan: check this: changed from legacy HsType code
-  = rnLHsType HsTypeCtx a	`thenM` \ (t, fvT) -> 
-    return (ETypeApp (Just t), fvT)
+rnExpr e@(ETypeApp (Just a)) --Hamidhasan: check this: changed from legacy HsType code
+  = do { etypesOn <- xoptM Opt_ExplicitTypeApplication
+       ; if etypesOn
+         then (rnLHsType HsTypeCtx a	`thenM` \ (t, fvT) -> 
+                return (ETypeApp (Just t), fvT))
+         else etypeOffErr e
+       }
 
-rnExpr (ETypeApp Nothing)
-  = return (ETypeApp Nothing, emptyFVs) 
+rnExpr e@(ETypeApp Nothing)
+  = do { etypesOn <- xoptM Opt_ExplicitTypeApplication
+       ; if etypesOn
+         then return (ETypeApp Nothing, emptyFVs)  
+         else etypeOffErr e
+       }
+  
 
 rnExpr (ArithSeq _ _ seq)
   = do { opt_OverloadedLists <- xoptM Opt_OverloadedLists
@@ -1436,6 +1445,12 @@ patSynErr :: HsExpr RdrName -> RnM (HsExpr Name, FreeVars)
 patSynErr e = do { addErr (sep [ptext (sLit "Pattern syntax in expression context:"),
                                 nest 4 (ppr e)])
                  ; return (EWildPat, emptyFVs) }
+
+etypeOffErr :: HsExpr RdrName -> RnM (HsExpr Name, FreeVars)
+etypeOffErr e = do { addErr (sep [ptext (sLit "Pattern syntax in expression context:"),
+                                  nest 4 (ppr e),
+                                  ptext (sLit "Perhaps you meant to use -XExplicitTypeApplication?")])
+                   ; return (ETypeApp Nothing, emptyFVs) }
 
 badIpBinds :: Outputable a => SDoc -> a -> SDoc
 badIpBinds what binds

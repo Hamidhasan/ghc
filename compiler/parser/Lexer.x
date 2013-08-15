@@ -58,6 +58,7 @@ module Lexer (
    traditionalRecordSyntaxEnabled,
    typeLiteralsEnabled,
    explicitNamespacesEnabled, sccProfilingOn, hpcEnabled,
+   explicitTypeApplicationEnabled,
    addWarning,
    lexTokenStream
   ) where
@@ -1932,7 +1933,7 @@ explicitNamespacesEnabled flags = testBit flags explicitNamespacesBit
 lambdaCaseEnabled :: Int -> Bool
 lambdaCaseEnabled flags = testBit flags lambdaCaseBit
 
-explicitTypeApplicationEnabled :: Int -> Bool
+explicitTypeApplicationEnabled :: Int -> Bool -- Hamidhasan
 explicitTypeApplicationEnabled flags = testBit flags explicitTypeApplicationBit
 
 -- PState for parsing options pragmas
@@ -1997,6 +1998,7 @@ mkPState flags buf loc =
                .|. typeLiteralsBit             `setBitIf` xopt Opt_DataKinds flags
                .|. explicitNamespacesBit       `setBitIf` xopt Opt_ExplicitNamespaces flags
                .|. lambdaCaseBit               `setBitIf` xopt Opt_LambdaCase               flags
+               .|. explicitTypeApplicationBit  `setBitIf` xopt Opt_ExplicitTypeApplication  flags --Hamidhasan
       --
       setBitIf :: Int -> Bool -> Int
       b `setBitIf` cond | cond      = bit b

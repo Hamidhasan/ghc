@@ -236,7 +236,7 @@ tcExpr (ExprWithTySig expr sig_ty) res_ty
 
       ; let inner_expr = ExprWithTySigOut (mkLHsWrap gen_fn expr') sig_ty
 
-      ; (inst_wrap, rho) <- deeplyInstantiate ExprSigOrigin [] sig_tc_ty
+      ; (inst_wrap, rho, _) <- deeplyInstantiate ExprSigOrigin [] sig_tc_ty -- Hamidhasan edited deeplyInstantiate
       ; tcWrapResult (mkHsWrap inst_wrap inner_expr) rho res_ty }
 
 tcExpr e@(ETypeApp _) res_ty
@@ -1102,7 +1102,7 @@ tcInferFun fun
          -- We can see the rank-2 type of the lambda in time to genrealise e
        ; fun_ty' <- zonkTcType fun_ty
 
-       ; (wrap, rho) <- deeplyInstantiate AppOrigin [] fun_ty' -- Hamidhasan
+       ; (wrap, rho, _) <- deeplyInstantiate AppOrigin [] fun_ty' -- Hamidhasan
        ; return (mkLHsWrap wrap fun, rho) }
 
 {-
@@ -1257,10 +1257,15 @@ tcInferIdWithOrig :: CtOrigin -> Name -> TcM (HsExpr TcId, TcRhoType)
 tcInferIdWithOrig orig id_name
   = do { id <- lookup_id
        ; (id_expr, id_rho, etypes) <- instantiateOuter orig id
-       ; (wrap, rho) <- deeplyInstantiate orig etypes id_rho -- here we go Hamidhasan
-       ; if (null etypes) then return ()
-         else warnTc True $ text "tcInferIdWithOrig...id_expr:" <+> ppr id_expr <+> text "id_rho:" <+> ppr id_rho
-                       $$ text "wrap:" <+> ppr wrap <+> text "rho:" <+> ppr rho
+       ; (wrap, rho, remainingETypes) <- deeplyInstantiate orig etypes id_rho -- here we go Hamidhasan
+{-        ; if (null remainingETypes) then return ()   --If there are any remaining explicit types even after
+         else warnTc True $                          --deep instantiation, then the programmer has provided too many
+              text "Provided" <+> speakNOf (length etypes) (text "explicit type") <>
+              char ',' $$ text "but the function" <+> ppr id <+> text "has fewer type variables."
+              (text "type variable") -- report a good error message here Hamidhasan -}
+       -- ; if (null etypes) then return ()
+       --   else warnTc True $ text "tcInferIdWithOrig...id_expr:" <+> ppr id_expr <+> text "id_rho:" <+> ppr id_rho
+       --                 $$ text "wrap:" <+> ppr wrap <+> text "rho:" <+> ppr rho
        ; return (mkHsWrap wrap id_expr, rho) }
   where
     lookup_id :: TcM TcId
@@ -1299,7 +1304,8 @@ instantiateOuter :: CtOrigin -> TcId -> TcM (HsExpr TcId, TcSigmaType, [Maybe Ty
 
 instantiateOuter orig id
   | null tvs && null theta
-  = do { etypes <- getLclTypeApps
+  = return (HsVar id, tau, [])
+{-  = do { etypes <- getLclTypeApps
        ; if (not $ null etypes) then
            warnTc True $ text "Provided" <+> speakNOf (length etypes) (text "type") <>
                  char ',' $$ text "but the function" <+> ppr id <+> text "has" <+> speakNOf (length tvs)
@@ -1307,6 +1313,7 @@ instantiateOuter orig id
                  ppr tvs $$ text " theta: " <> ppr theta <> text " tau: " <> ppr tau <+> text "etypes" <+> ppr etypes
          else return ()
        ; return (HsVar id, tau, []) }
+-}
 
   | otherwise
   = do { etypes <- getLclTypeApps -- See Note [Explicit Type Application] consulting
@@ -1318,11 +1325,9 @@ instantiateOuter orig id
                  ppr tvs $$ text " theta: " <> ppr theta <> text " tau: " <> ppr tau
          else return ()
 
-       --; (tvsToSubst, tvs') <- return $ splitAtList etypes tvs
        ; (remainingETypes, tvs', etypeSubst) <- return $ createExplicitSubst etypes tvs ([], [], emptyTvSubst)
---     ; (theta', tau') <- return $ (substTheta etypeSubst theta, TcType.substTy etypeSubst tau)
                            -- Check for explicit type application
-         
+                                                
        ; (_, tys, subst) <- tcInstTyVarsETypes tvs' -- See Note [Instantiating TyVars with Explicit Types]
        ; doStupidChecks id tys
       -- Union with the explicitTypeSubst. 
@@ -1334,7 +1339,7 @@ instantiateOuter orig id
          (TvSubst _ etenv, TvSubst _ tenv) -> 
            if (tenv `intersectsVarEnv` etenv) then warnTc True $ 
            text "Type environments are not disjoint: " <> ppr tenv $$ ppr etenv else return ()
-       ; wrap <- instCall orig tys theta' --Hamidhasan TODO : constraint check here
+       ; wrap <- instCall orig tys theta' 
        ; if (null etypes) then return () else
           warnTc True $ text "instantiateOuter: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
                        text " theta: " <> ppr theta <> text " tau: " <> ppr tau $$

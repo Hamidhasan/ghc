@@ -244,7 +244,7 @@ data HsType name
   | HsRecTy [ConDeclField name]         -- Only in data type declarations
 
   | HsCoreTy Type       -- An escape hatch for tunnelling a *closed* 
-                        -- Core Type through HsSyn.  Hamidhasan: YES YES YES
+                        -- Core Type through HsSyn. 
 
   | HsExplicitListTy     -- A promoted explicit list
         PostTcKind       -- See Note [Promoted lists and tuples]

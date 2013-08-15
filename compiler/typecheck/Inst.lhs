@@ -192,7 +192,7 @@ deeplyInstantiate orig ty
   | otherwise = return (idHsWrapper, ty)
 -}
 
-deeplyInstantiate :: CtOrigin -> [Maybe Type] -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
+deeplyInstantiate :: CtOrigin -> [Maybe Type] -> TcSigmaType -> TcM (HsWrapper, TcRhoType, [Maybe Type])
 --   Int -> forall a. a -> a  ==>  (\x:Int. [] x alpha) :: Int -> alpha
 -- In general if
 -- if    deeplyInstantiate ty = (wrap, rho)
@@ -225,15 +225,16 @@ deeplyInstantiate orig etypes ty
          <+> ppr wrap1 $$ text "etypes:" <+> ppr etypes
          else return () -}
               
-       ; (wrap2, rho2) <- deeplyInstantiate orig remainingETypes (substTy subst' rho)
+       ; (wrap2, rho2, leftOverETypes) <- deeplyInstantiate orig remainingETypes (substTy subst' rho)
        ; return (mkWpLams ids1 
                     <.> wrap2
                     <.> wrap1
                  --   <.> mkWpTyApps appliedETypes --wrapping in the etypes
                     <.> mkWpEvVarApps ids1,
-                 mkFunTys arg_tys rho2) } 
+                 mkFunTys arg_tys rho2,
+                 leftOverETypes) } 
 
-  | otherwise = return (idHsWrapper, ty)
+  | otherwise = return (idHsWrapper, ty, [])
 
 {-
 createExplicitSubst :: [Maybe Type] -> [TyVar] -> ([Type], [TyVar], TvSubst) -> ([Type], [TyVar], TvSubst)
@@ -248,7 +249,7 @@ createExplicitSubst [] (tv:tvs) (app, rem, subst) =
 createExplicitSubst (_:_) [] (app, rem, subst) = (reverse app, reverse rem, subst)
 -}
 
-createExplicitSubst :: [Maybe Type] -> [TyVar] ->
+createExplicitSubst :: [Maybe Type] -> [TyVar] ->          -- Type Applications, and TyVars
                        ([Maybe Type], [Either Type TyVar], TvSubst) ->
                        ([Maybe Type], [Either Type TyVar], TvSubst)
                        -- returns remaining explicit types, Either etypes OR tyvars, and the tvSubst

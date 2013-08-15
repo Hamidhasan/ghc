@@ -19,10 +19,12 @@ g u = u
 -- No type sig
 pairup x y = (x, y)
 
+f :: Oof a b -> (a, b) -- (foo b a -> (b, a)
 h (Foo a b) = pairup a b
 h _ = undefined
 
-f (Foo a b) = pairup &Int &Bool a b
+
+f (Foo a b) = pairup @Int @Bool a b
 f _ = undefined
 
 -- What will occur if f is called with foo and oof?

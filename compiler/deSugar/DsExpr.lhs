@@ -195,7 +195,7 @@ dsExpr (HsOverLit lit)        = dsOverLit lit
 --  = do { expr <- return (varToCoreExpr var)
 --       ; warnDs $ text "Desugaring HsVar... var:" <+> ppr var $$ text "expr:" <+>
 --                  pprCoreExpr expr
---       ; return (expr) }           
+--       ; return (expr) }            Hamidhasan
 
 dsExpr (HsWrap co_fn e)
   = do { e' <- dsExpr e
@@ -203,7 +203,7 @@ dsExpr (HsWrap co_fn e)
        ; warn_id <- woptM Opt_WarnIdentities
        ; when warn_id $ warnAboutIdentities e' wrapped_e
       -- ; warnDs $ text "Desugaring HsWrap... e: " <+> ppr e <+> text "e':" <+> ppr e'
-      --          $$ text "co_fn:" <+> ppr co_fn <+> text "wrapped_e:"
+      --          $$ text "co_fn:" <+> ppr co_fn <+> text "wrapped_e:" Hamidhasan
       --          <+> pprCoreExpr wrapped_e 
        ; return wrapped_e }
 
@@ -219,14 +219,14 @@ dsExpr (HsLamCase arg matches)
        ; return $ Lam arg_var $ bindNonRec discrim_var (Var arg_var) matching_code }
 
 dsExpr (HsApp fun arg)
-  = do { warnDs $ text "Desugaring App... fun:" <+> ppr fun <+> text "arg:" <+> ppr arg
-       ; expr <- mkCoreAppDs <$> dsLExpr fun <*> dsLExpr arg
-       ; warnDs $ text "Resulting core: " <+> ppr expr
+  = do { expr <- mkCoreAppDs <$> dsLExpr fun <*> dsLExpr arg
+--     { warnDs $ text "Desugaring App... fun:" <+> ppr fun <+> text "arg:" <+> ppr arg Hamidhasan
+--     ; warnDs $ text "Resulting core: " <+> ppr expr
        ; return expr}
 
-dsExpr (ETypeApp (L _ (HsCoreTy ty)))  = return $ Type ty   --Hamidhasan TODO: check.
-dsExpr (ETypeApp badType) = pprPanic "dsExpr:ETypeApp" $ text "found a HsType other than HsCoreTy:"
-                                                         <+> ppr badType
+--dsExpr (ETypeApp (L _ (HsCoreTy ty)))  = return $ Type ty   --Hamidhasan TODO: check.
+--dsExpr (ETypeApp badType) = pprPanic "dsExpr:ETypeApp" $ text "found a HsType other than HsCoreTy:"
+--                                                         <+> ppr badType
 
 dsExpr (HsUnboundVar _) = panic "dsExpr: HsUnboundVar"
 \end{code}
@@ -271,7 +271,7 @@ will sort it out.
 \begin{code}
 dsExpr (OpApp e1 op _ e2)
   = -- for the type of y, we need the type of op's 2nd argument
-    do --{ warnDs $ text "Desugaring OpApp... e1:" <+> ppr e1 <+> text "op:" <+> ppr op <+>
+    do --{ warnDs $ text "Desugaring OpApp... e1:" <+> ppr e1 <+> text "op:" <+> ppr op <+> Hamidhasan
        --           text "e2:" <+> ppr e2
        { mkCoreAppsDs <$> dsLExpr op <*> mapM dsLExpr [e1, e2] }
     
@@ -621,6 +621,7 @@ dsExpr (EWildPat      {})  = panic "dsExpr:EWildPat"
 dsExpr (EAsPat        {})  = panic "dsExpr:EAsPat"
 dsExpr (EViewPat      {})  = panic "dsExpr:EViewPat"
 dsExpr (ELazyPat      {})  = panic "dsExpr:ELazyPat"
+dsExpr (ETypeApp      {})  = panic "dsExpr:ETypeApp"
 dsExpr (HsDo          {})  = panic "dsExpr:HsDo"
 
 

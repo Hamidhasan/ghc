@@ -3,7 +3,7 @@
 
  
 {-# OPTIONS -Wall -fwarn-tabs -fno-warn-type-defaults #-}
-{-# LANGUAGE TypeFamilies, ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies, ScopedTypeVariables, ExplicitTypeApplication #-}
 
 module Main where
 import Prelude
@@ -21,4 +21,4 @@ f = g True
 main :: IO ()
 main = do
          print $ f
-         print $ g &Char False
+         print $ g @Char False

@@ -1530,6 +1530,9 @@ fexp    :: { LHsExpr RdrName }
 -- I think fexp stands for "function expression"
 -- and aexp stands for ... application expression? not sure. 
 
+-- should lazy pat also be able to recurse on aexp OR atexp? right now I
+-- may have actually changed the functionality.
+
 aexp    :: { LHsExpr RdrName }                     
         : '~' aexp                      { LL $ ELazyPat $2 }
         | aexp1                 { $1 }

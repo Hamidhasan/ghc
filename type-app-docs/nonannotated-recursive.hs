@@ -19,7 +19,7 @@ import Prelude
 -- mapSame :: forall a b. (a -> b) -> [a] -> [b]
 mapSame :: forall b . (forall a. a -> a) -> [b] -> [b]
 mapSame _ [] = []
-mapSame fun (x:xs) = (fun &b x) : (mapSame fun xs)
+mapSame fun (x:xs) = (fun @b x) : (mapSame fun xs)
 
 plusOne :: Num a => a -> a
 plusOne x = x + 1
@@ -27,5 +27,5 @@ plusOne x = x + 1
 main :: IO ()
 main = do
          print $ mapSame (id) [1, 2, 3]
---         print $ mapSame &Float (id) [1, 2, 3]
-         print $ mapSame &Int (plusOne) [1, 2, 3]
+         print $ mapSame @Float (id) [1, 2, 3]
+--         print $ mapSame @Int (plusOne @Int) [1, 2, 3]

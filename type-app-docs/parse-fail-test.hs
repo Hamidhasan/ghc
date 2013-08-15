@@ -29,3 +29,4 @@ main :: IO ()
 main = do
          print $ g 5 12
          print $ dblTuple f@Foo @String ((Foo 5 True), "hello")
+

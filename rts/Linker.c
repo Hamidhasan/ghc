@@ -2060,11 +2060,15 @@ void freeObjectCode (ObjectCode *oc)
         sysErrorBelch("munmap");
     }
 
+#if defined(powerpc_HOST_ARCH) || defined(x86_64_HOST_ARCH) || defined(arm_HOST_ARCH)
+#if !defined(x86_64_HOST_ARCH) || !defined(mingw32_HOST_OS)
     if (!USE_CONTIGUOUS_MMAP)
     {
         munmap(oc->symbol_extras,
                ROUND_UP(sizeof(SymbolExtra) * oc->n_symbol_extras, pagesize));
     }
+#endif
+#endif
 
 #else
 
@@ -2075,7 +2079,6 @@ void freeObjectCode (ObjectCode *oc)
     stgFree(oc->symbol_extras);
 #endif
 #endif
-
 
 #endif
 

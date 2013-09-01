@@ -36,7 +36,7 @@ module TcHsType (
 	tcLHsKind, 
 
 		-- Pattern type signatures
-	tcHsPatSigType, tcPatSig
+	tcHsPatSigType, tcPatSig,
    ) where
 
 #include "HsVersions.h"

@@ -3,6 +3,7 @@
 
  
 {-# OPTIONS -Wall -fwarn-tabs -fno-warn-type-defaults #-}
+{-# LANGUAGE ExplicitTypeApplication #-}
 
 module Main where
 import Prelude
@@ -28,5 +29,5 @@ dblTuple e@(x,y) = (e, y)
 main :: IO ()
 main = do
          print $ g 5 12
-         print $ dblTuple f@Foo @String ((Foo 5 True), "hello")
-
+         --print $ dblTuple f@Foo @String ((Foo 5 True), "hello")
+         print $ dblTuple @Foo @[Char] ((Foo 5 True), "hello")

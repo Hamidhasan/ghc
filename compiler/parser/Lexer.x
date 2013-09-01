@@ -99,7 +99,7 @@ $decdigit  = $ascdigit -- for now, should really be $digit (ToDo)
 $digit     = [$ascdigit $unidigit]
 
 $special   = [\(\)\,\;\[\]\`\{\}]
-$ascsymbol = [\!\#\$\%\&\*\+\.\/\<\=\>\?\@\\\^\|\-\~]
+$ascsymbol = [\!\#\$\%\&\*\+\.\/\<\=\>\?\\\^\@\|\-\~]
 $unisymbol = \x04 -- Trick Alex into handling Unicode. See alexGetChar.
 $symbol    = [$ascsymbol $unisymbol] # [$special \_\:\"\']
 
@@ -253,7 +253,7 @@ $tab+         { warn Opt_WarnTabs (text "Tab character") }
    -- NOTE: accept -} at the end of a LINE pragma, for compatibility
    -- with older versions of GHC which generated these.
 
-<0,option_prags> {
+<0,option_prags> { -- Hamidhasan look here
   "{-#" $whitechar* $pragmachar+
         $whitechar+ $pragmachar+ / { known_pragma twoWordPrags }
                                  { dispatch_pragmas twoWordPrags }
@@ -373,6 +373,9 @@ $tab+         { warn Opt_WarnTabs (text "Tab character") }
   @conid "#"+       / { ifExtension magicHashEnabled } { idtoken conid }
 }
 
+<0> { -- Hamidhasan: special for parsing type application refactor
+  \ \@                { special ITatapp }
+}
 -- ToDo: - move `var` and (sym) into lexical syntax?
 --       - remove backquote from $special?
 <0> {
@@ -381,6 +384,7 @@ $tab+         { warn Opt_WarnTabs (text "Tab character") }
   @varsym                                          { varsym }
   @consym                                          { consym }
 }
+
 
 -- For the normal boxed literals we need to be careful
 -- when trying to be close to Haskell98
@@ -506,7 +510,8 @@ data Token
   | ITvbar
   | ITlarrow
   | ITrarrow
-  | ITat
+  | ITat                        -- Hamidhasan  
+  | ITatapp
   | ITtilde
   | ITtildehsh
   | ITdarrow
@@ -680,6 +685,7 @@ reservedSymsFM = listToUFM $
        ,("<-",  ITlarrow,   always)
        ,("->",  ITrarrow,   always)
        ,("@",   ITat,       always)
+       ,(" @",  ITatapp,   always)
        ,("~",   ITtilde,    always)
        ,("~#",  ITtildehsh, magicHashEnabled)
        ,("=>",  ITdarrow,   always)

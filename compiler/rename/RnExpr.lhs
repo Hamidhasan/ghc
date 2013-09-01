@@ -299,18 +299,18 @@ rnExpr (HsMultiIf ty alts)
   = do { (alts', fvs) <- mapFvRn (rnGRHS IfAlt rnLExpr) alts
        ; return (HsMultiIf ty alts', fvs) }
 
-rnExpr e@(ETypeApp (Just a)) --Hamidhasan: check this: changed from legacy HsType code
+rnExpr e@(ETypeApp (ExplicitTy a a')) --Hamidhasan: check this: changed from legacy HsType code
   = do { etypesOn <- xoptM Opt_ExplicitTypeApplication
        ; if etypesOn
          then (rnLHsType HsTypeCtx a	`thenM` \ (t, fvT) -> 
-                return (ETypeApp (Just t), fvT))
+                return (ETypeApp (ExplicitTy t a'), fvT))
          else etypeOffErr e
        }
 
-rnExpr e@(ETypeApp Nothing)
+rnExpr e@(ETypeApp Unknown)
   = do { etypesOn <- xoptM Opt_ExplicitTypeApplication
        ; if etypesOn
-         then return (ETypeApp Nothing, emptyFVs)  
+         then return (ETypeApp Unknown, emptyFVs)  
          else etypeOffErr e
        }
   
@@ -1450,7 +1450,7 @@ etypeOffErr :: HsExpr RdrName -> RnM (HsExpr Name, FreeVars)
 etypeOffErr e = do { addErr (sep [ptext (sLit "Pattern syntax in expression context:"),
                                   nest 4 (ppr e),
                                   ptext (sLit "Perhaps you meant to use -XExplicitTypeApplication?")])
-                   ; return (ETypeApp Nothing, emptyFVs) }
+                   ; return (ETypeApp Unknown, emptyFVs) }
 
 badIpBinds :: Outputable a => SDoc -> a -> SDoc
 badIpBinds what binds

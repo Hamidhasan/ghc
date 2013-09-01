@@ -326,7 +326,7 @@ tcSubType origin ctxt ty_actual ty_expected
   | isSigmaTy ty_actual
   = do { (sk_wrap, inst_wrap) 
             <- tcGen ctxt ty_expected $ \ _ sk_rho -> do
-            { (in_wrap, in_rho, _) <- deeplyInstantiate origin [] ty_actual -- Hamidhasan
+            { (in_wrap, in_rho) <- deeplyInstantiate origin ty_actual -- Hamidhasan
             ; cow <- unify in_rho sk_rho
             ; return (coToHsWrapper cow <.> in_wrap) }
        ; return (sk_wrap <.> inst_wrap) }

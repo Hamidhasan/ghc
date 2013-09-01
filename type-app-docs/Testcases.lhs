@@ -312,7 +312,7 @@ g _ = undefined
 f :: Char
 f = g True
 
-answer = g &Char False
+answer = g @Char False
 
 \end{code}
 

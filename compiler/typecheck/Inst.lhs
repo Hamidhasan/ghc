@@ -16,7 +16,7 @@ The @Inst@ type: dictionaries or method instances
 module Inst ( 
        deeplySkolemise, 
        deeplyInstantiate, instCall, instStupidTheta,
-       createExplicitSubst,
+--       createExplicitSubst,
        emitWanted, emitWanteds,
 
        newOverloadedLit, mkOverLit, 
@@ -165,7 +165,7 @@ deeplySkolemise ty
 
   | otherwise
   = return (idHsWrapper, [], [], ty)
-{-
+
 deeplyInstantiate :: CtOrigin -> TcSigmaType -> TcM (HsWrapper, TcRhoType)
 --   Int -> forall a. a -> a  ==>  (\x:Int. [] x alpha) :: Int -> alpha
 -- In general if
@@ -190,9 +190,9 @@ deeplyInstantiate orig ty
                  mkFunTys arg_tys rho2) }
 
   | otherwise = return (idHsWrapper, ty)
--}
 
-deeplyInstantiate :: CtOrigin -> [Maybe Type] -> TcSigmaType -> TcM (HsWrapper, TcRhoType, [Maybe Type])
+
+{- deeplyInstantiate :: CtOrigin -> [HsTypeApp] -> TcSigmaType -> TcM (HsWrapper, TcRhoType, [Maybe Type])
 --   Int -> forall a. a -> a  ==>  (\x:Int. [] x alpha) :: Int -> alpha
 -- In general if
 -- if    deeplyInstantiate ty = (wrap, rho)
@@ -201,18 +201,18 @@ deeplyInstantiate :: CtOrigin -> [Maybe Type] -> TcSigmaType -> TcM (HsWrapper, 
 
 deeplyInstantiate orig etypes ty
   | Just (arg_tys, tvs, theta, rho) <- tcDeepSplitSigmaTy_maybe ty
-  = do { (remainingETypes, tvs', etypeSubst) <- return $ createExplicitSubst etypes tvs ([], [], emptyTvSubst)
-
-       ; (_, tys, subst) <- tcInstTyVarsETypes tvs' -- See Note [Instantiating TyVars with Explicit Types]
-
-       ; subst' <- return $ etypeSubst `unionTvSubst` subst
-       ; case (etypeSubst, subst) of
-         (TvSubst _ etenv, TvSubst _ tenv) -> 
-           if (tenv `intersectsVarEnv` etenv) then failWithTc $ 
-           text "Type environments are not disjoint: " <> ppr tenv $$ ppr etenv else return ()
-                                                                                     
-       ; ids1  <- newSysLocalIds (fsLit "di") (substTys subst' arg_tys)
-       ; wrap1 <- instCall orig tys (substTheta subst' theta)
+  = do { (tys, subst, remainingETypes) <-
+           if (null etypes) then
+             do { (_, tys, subst) <- tcInstTyVars tvs
+                ; return (tys, subst, []) }
+           else
+             do { (remETypes, tvs', etypeSubst) <- return $ createExplicitSubst etypes tvs ([], [], emptyTvSubst)
+                ; (_, tys, subst) <- tcInstTyVarsETypes tvs'
+                ; subst' <- return (etypeSubst `unionTvSubst` subst)
+                ; return (tys, subst', remETypes) }
+             
+       ; ids1  <- newSysLocalIds (fsLit "di") (substTys subst arg_tys)
+       ; wrap1 <- instCall orig tys (substTheta subst theta)
       {-  ; warnTc True $ text "Deeply instantiate...arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+>
          ppr tvs $$ text "theta:" <+> ppr theta <+> text "rho:" <+> ppr rho $$ text "tys:" <+>
          ppr tys <+> text "subst:" <+> ppr subst $$ text "ids1:" <+> ppr ids1 <+> text "wrap1:"
@@ -225,7 +225,7 @@ deeplyInstantiate orig etypes ty
          <+> ppr wrap1 $$ text "etypes:" <+> ppr etypes
          else return () -}
               
-       ; (wrap2, rho2, leftOverETypes) <- deeplyInstantiate orig remainingETypes (substTy subst' rho)
+       ; (wrap2, rho2, leftOverETypes) <- deeplyInstantiate orig remainingETypes (substTy subst rho)
        ; return (mkWpLams ids1 
                     <.> wrap2
                     <.> wrap1
@@ -235,37 +235,76 @@ deeplyInstantiate orig etypes ty
                  leftOverETypes) } 
 
   | otherwise = return (idHsWrapper, ty, [])
-
-{-
-createExplicitSubst :: [Maybe Type] -> [TyVar] -> ([Type], [TyVar], TvSubst) -> ([Type], [TyVar], TvSubst)
-                       -- returns applied explicit types, remaining tyvars, and the tvSubst
-createExplicitSubst [] [] (app, rem, subst) = (reverse app, reverse rem, subst)
-createExplicitSubst ((Just ety):etys) (tv:tvs) (app, rem, subst) = --if there is a type, we add it to the subst
-  createExplicitSubst etys tvs (ety:app, rem, extendTvSubst subst tv ety)
-createExplicitSubst (Nothing:etys) (tv:tvs) (app, rem, subst) = -- if there is no type - "@_" - we add it to tvs
-  createExplicitSubst etys tvs (app, tv:rem, subst)             -- and we "throw away" the Nothing
-createExplicitSubst [] (tv:tvs) (app, rem, subst) =
-  createExplicitSubst [] tvs (app, tv:rem, subst)
-createExplicitSubst (_:_) [] (app, rem, subst) = (reverse app, reverse rem, subst)
 -}
+{-
+tcTypeApps :: [TypeApp] -> [Kind] -> [TypeApp] -> TcM [TypeApp]
+tcTypeApps [] [] etypes = return $ reverse etypes
+tcTypeApps (hsType:hsTypes) (ki:kinds) etypes
+  = do { etype <- tcTypeApp hsType ki
+       ; tcTypeApps hsTypes kinds (etype:etypes) }
 
-createExplicitSubst :: [Maybe Type] -> [TyVar] ->          -- Type Applications, and TyVars
-                       ([Maybe Type], [Either Type TyVar], TvSubst) ->
-                       ([Maybe Type], [Either Type TyVar], TvSubst)
+tcTypeApp :: HsTypeApp -> Kind -> TcM (HsTypeApp)
+tcTypeApp (L _ (ETypeApp (Just hsType))) kind
+ = do { etype <- tcCheckLHsType hsType kind
+      ; return $ Just etype }
+tcTypeApp (L _ (ETypeApp (Nothing))) _ = return Nothing
+tcTypeApp expr = pprPanic "tcTypeApp" $ 
+                       text "Warning! tcTypeApp is" <+>
+                       text "being applied to a non-type application" <+>
+                       text "expression, namely," $$ ppr expr
+-}
+{- createExplicitSubst :: [HsTypeApp] -> [TyVar] ->                 -- Type Applications, and TyVars
+                       ([HsTypeApp], [Either Type TyVar], TvSubst) ->
+                       ([HsTypeApp], [Either Type TyVar], TvSubst)
                        -- returns remaining explicit types, Either etypes OR tyvars, and the tvSubst
                        -- The "either list" is handled by tcInstTyVarsETypes - this preserves correct wrapping order
 createExplicitSubst [] [] (remEtys, etyORvars, subst) = (reverse remEtys, reverse etyORvars, subst)
-createExplicitSubst ((Just ety):etys) (tv:tvs) (remEtys, etyORvars, subst) = --if there is a type, we add it to the subst
-  createExplicitSubst etys tvs (remEtys, (Left ety):etyORvars, extendTvSubst subst tv ety)
+createExplicitSubst ((Explicit _ (Just ety)):etys) (tv:tvs) (remEtys, etyORvars, subst) =
+  if (isTypeVar tv) then --if there is a type, we add it to the subst
+    createExplicitSubst etys tvs (remEtys, (Left ety):etyORvars, extendTvSubst subst tv ety)
+  else -- if its a kind variable, leave it alone, and propagate the etype
+    createExplicitSubst ((Just ety):etys) tvs (remEtys, (Right tv):etyORvars, subst)
+
+createExplicitSubst ((Explicit _ Nothing):etys) (tv:tvs) (remEtys, etyORvars, subst) =
+  panic " createExplicitSubst: unchecked typeapp found before all type variables exhausted"
   
-createExplicitSubst (Nothing:etys) (tv:tvs) (remEtys, etyORvars, subst) = -- if there is no type - "@_" - we add it to tvs
+createExplicitSubst (Unknown:etys) (tv:tvs) (remEtys, etyORvars, subst) = -- if there is no type - "@_" - we add it to tvs
   createExplicitSubst etys tvs (remEtys, (Right tv):etyORvars, subst)             -- and we "throw away" the Nothing
   
-createExplicitSubst [] (tv:tvs) (remEtys, etyORvars, subst) =
-  createExplicitSubst [] tvs (remEtys, (Right tv):etyORvars, subst)
+createExplicitSubst [] (tv:tvs) (remEtys, etyORvars, subst) =             -- When we run out of etypes, we add the rest of
+  createExplicitSubst [] tvs (remEtys, (Right tv):etyORvars, subst)       -- the type variables
   
 createExplicitSubst (ety:etys) [] (remEtys, etyORvars, subst) =
   createExplicitSubst etys [] (ety:remEtys, etyORvars, subst)
+-}
+{- createExplicitSubst :: [HsTypeApp id] -> [TyVar]  ->                 -- Type Applications, and TyVars
+                       ([HsTypeApp], [Either Type TyVar], TvSubst) ->
+                       TcM ([HsTypeApp], [Either Type TyVar], TvSubst)
+                       -- returns remaining explicit types, Either etypes OR tyvars, and the tvSubst
+                       -- The "either list" is handled by tcInstTyVarsETypes - this preserves correct wrapping order
+createExplicitSubst [] [] (remEtys, etyORvars, subst) = return (reverse remEtys, reverse etyORvars, subst)
+createExplicitSubst e@((ExplicitTy _ (Just ety)):etys) (tv:tvs) (remEtys, etyORvars, subst) =
+  if (isTypeVar tv) then --if there is a type, we add it to the subst
+    return $ createExplicitSubst etys tvs (remEtys, (Left ety):etyORvars, extendTvSubst subst tv ety)
+  else -- if its a kind variable, leave it alone, and propagate the etype
+    return $ createExplicitSubst e tvs (remEtys, (Right tv):etyORvars, subst)
+
+{-createExplicitSubst e@((ExplicitTy hsType Nothing):etys) (tv:tvs) (remEtys, etyORvars, subst)
+ = if (isTypeVar tv) then do
+      { etype <- tcCheckLHsType hsType (idType tv) --(idType tv) gets the kind of the type variable
+      ; return $ createExplicitSubst ((Explicit hsType (Just etype)):etys) (tv:tvs) (remEtys, etyORvars, subst) }
+   else
+    return $ createExplicitSubst e tvs (remEtys, ((Right tv):etyORvars), subst)
+-}
+createExplicitSubst (Unknown:etys) (tv:tvs) (remEtys, etyORvars, subst) = -- if there is no type - "@_" - we add it to tvs
+  return $ createExplicitSubst etys tvs (remEtys, (Right tv):etyORvars, subst)             -- and we "throw away" the Nothing
+  
+createExplicitSubst [] (tv:tvs) (remEtys, etyORvars, subst) =             -- When we run out of etypes, we add the rest of
+  return $ createExplicitSubst [] tvs (remEtys, (Right tv):etyORvars, subst)       -- the type variables
+  
+createExplicitSubst (ety:etys) [] (remEtys, etyORvars, subst) =
+  return $ createExplicitSubst etys [] (ety:remEtys, etyORvars, subst)
+-}
 
 -- Hamidhasan TODO : need to check the length of etypes vs. type variables. and report an appropriate error message
 -- a bit tricky because of nesting.
@@ -290,9 +329,6 @@ instCall :: CtOrigin -> [TcType] -> TcThetaType -> TcM HsWrapper
 
 instCall orig tys theta 
   = do	{ dict_app <- instCallConstraints orig theta
-        ; _ <- warnTc True $ text "instCall...tys:" <+> ppr tys <+>
-               text "theta:" <+> ppr theta
-               $$ text "dict_app:" <+> ppr dict_app                                
         ; return (dict_app <.> mkWpTyApps tys) }
 
 
@@ -322,19 +358,14 @@ instCallConstraints orig preds
     go pred 
      | Just (ty1, ty2) <- getEqPredTys_maybe pred -- Try short-cut
      = do  { co <- unifyType ty1 ty2
-           ; _ <- warnTc True $ text "callConstraints...EqPredTys: pred:" <+>
-                 ppr pred $$ text "ty1:" <+> ppr ty1 <+> text "ty2:" <+> ppr ty2
-                 
            ; return (EvCoercion co) }
      | otherwise
      = do { ev_var <- emitWanted orig pred
-          ; _ <- warnTc True $ text "instCallConstraints emitWanted pred:" <+>
-                 ppr pred $+$ text "ev_var:" <+> ppr ev_var
-
      	  ; return (EvId ev_var) }
 
 {-          ; _ <- warnTc True $ text "instCallConstraints emitWanted pred:" <+>
                  ppr pred $+$ text "ev_var:" <+> ppr ev_var
+Hamidhasan
           ; _ <- warnTc True $ text "callConstraints...EqPredTys: pred:" <+>
                  ppr pred $$ text "ty1:" <+> ppr ty1 <+> text "ty2:" <+> ppr ty2
 -}

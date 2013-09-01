@@ -17,7 +17,7 @@ module HsTypes (
         HsContext, LHsContext,
         HsQuasiQuote(..),
         HsTyWrapper(..),
-        HsTyLit(..),
+        HsTyLit(..), HsTypeApp(..),
         HsIPName(..), hsIPNameFS,
 
         LBangType, BangType, HsBang(..), 
@@ -35,7 +35,7 @@ module HsTypes (
         splitHsAppTys, mkHsAppTys, mkHsOpTy,
 
         -- Printing
-        pprParendHsType, pprHsForAll, pprHsContext, ppr_hs_context,
+        pprParendHsType, pprHsForAll, pprHsContext, ppr_hs_context
     ) where
 
 import {-# SOURCE #-} HsExpr ( HsSplice, pprSplice )
@@ -274,6 +274,16 @@ type HsTyOp name = (HsTyWrapper, name)
 
 mkHsOpTy :: LHsType name -> Located name -> LHsType name -> HsType name
 mkHsOpTy ty1 op ty2 = HsOpTy ty1 (WpKiApps [], op) ty2
+
+-- Hamidhasan Explicit Type Application datatype convenient for threading
+data HsTypeApp name
+  = Unknown
+  | ExplicitTy (LHsType name) (Maybe Type)
+  deriving (Data, Typeable)
+-- The explicit type has a maybe associated with it. This is because we
+-- need to first check the LHsType. TypeApp will always be first created with
+-- "Nothing", then kind-checked into a valid "Just type"
+
 \end{code}
 
 Note [HsForAllTy tyvar binders]
@@ -535,6 +545,9 @@ instance (OutputableBndr name) => Outputable (HsTyVarBndr name) where
 instance (Outputable thing) => Outputable (HsWithBndrs thing) where
     ppr (HsWB { hswb_cts = ty }) = ppr ty
 
+instance (OutputableBndr name) => Outputable (HsTypeApp name) where
+    ppr tyApp = pprHsTypeApp tyApp
+
 pprHsForAll :: OutputableBndr name => HsExplicitFlag -> LHsTyVarBndrs name ->  LHsContext name -> SDoc
 pprHsForAll exp qtvs cxt 
   | show_forall = forall_part <+> pprHsContext (unLoc cxt)
@@ -685,6 +698,11 @@ ppr_fun_ty ctxt_prec ty1 ty2
 ppr_tylit :: HsTyLit -> SDoc
 ppr_tylit (HsNumTy i) = integer i
 ppr_tylit (HsStrTy s) = text (show s)
+
+pprHsTypeApp :: (OutputableBndr name) => HsTypeApp name -> SDoc -- Hamidhasan
+pprHsTypeApp (ExplicitTy hsTy Nothing)  = char '@' <> ppr hsTy
+pprHsTypeApp (ExplicitTy _ (Just ty))   = char '@' <> ppr ty
+pprHsTypeApp Unknown                    = char '@' <> char '_'
 \end{code}
 
 

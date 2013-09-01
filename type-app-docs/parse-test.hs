@@ -3,7 +3,7 @@
 
  
 {-# OPTIONS -Wall -fwarn-tabs -fno-warn-type-defaults #-}
-{-# LANGUAGE ExplicitTypeApplication #-}
+{-# LANGUAGE ExplicitTypeApplication, ScopedTypeVariables, RankNTypes #-}
 
 module Main where
 import Prelude
@@ -16,12 +16,7 @@ f u v = (u, v)
 g :: Int -> Int -> (Int, Int)
 g u v = f @(Int) @Int u v
 
--- Testing different '@' locations
--- weaved :: Float -> Float -> (Float, Float)
--- weaved u v = f @Float u @Float v
 
--- after :: Bool -> Bool -> (Bool, Bool)
--- after u v = f u v @Bool @Bool
 
 dblTuple :: (a, b) -> ((a, b), b)
 dblTuple e@(_,y) = (e, y)
@@ -35,10 +30,21 @@ listpair :: [a] -> ([a], [a])
 listpair [] = ([], [])
 listpair b@(_:_) = (b, b)
 
+-- suggested two cases by R. Eisenberg
+newtype N = MkN { unMkN :: forall a. Show a => a -> String }
+n = MkN show
+foo :: Bool -> String
+foo = unMkN n @Bool   -- Fails without parens! Not anymore!
+foo = unMkN (n @Bool)
+
+(&&) :: Bool -> Bool -> Bool
+(b@True) && True = True
+_ && _ = False
+
 main :: IO ()
 main = do
          print $ g 5 12
-         print $ ((id @String (concat ["hello", "world", []])):"Hamidhasan":[])
+         print $ ((id @String (concat ["hello ", "world ", []])):"Hamidhasan":[])
          print $ dblTuple @(Foo) @String ((Foo 5 True), "hello")
          print $ listpair @(Maybe Int) [Just 12, Nothing]
          print $ listpair @(Maybe Bool) $ (Just True) : (Just False) : (Nothing @Bool) : []

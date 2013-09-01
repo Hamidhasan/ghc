@@ -12,6 +12,6 @@ plus x y = x + y
 
 main :: IO ()
 main = do
-  print $ plus &Int 5 7
-  print $ plus &Rational 5 10
-  print $ (+) &Int &Int &Int 12 14
+  print $ plus @Int 5 7
+  print $ plus @Rational 5 10
+  print $ (+) @Int @Int @Int 12 14

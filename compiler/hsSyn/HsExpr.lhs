@@ -312,8 +312,8 @@ data HsExpr id
 
   | ELazyPat    (LHsExpr id) -- ~ pattern
 
-  | ETypeApp    (Maybe (LHsType id)) -- Explicit type argument; e.g  f {| Int |} x y
-  
+  -- | ETypeApp    (Maybe (LHsType id)) -- Explicit type argument; e.g  f {| Int |} x y
+  | ETypeApp    (HsTypeApp id)
    -- Hamidhasan: Is this what I need to implement?
                              -- Or at least the HsSyn version of what is needed.
     -- Renamed from HsType -> ETypeApp, to match above.
@@ -389,6 +389,7 @@ Hamidhasan Ahmed.
 \begin{code}
 instance OutputableBndr id => Outputable (HsExpr id) where
     ppr expr = pprExpr expr
+
 \end{code}
 
 \begin{code}
@@ -425,7 +426,7 @@ ppr_expr (HsVar v)       = pprPrefixOcc v
 ppr_expr (HsIPVar v)     = ppr v
 ppr_expr (HsLit lit)     = ppr lit
 ppr_expr (HsOverLit lit) = ppr lit
-ppr_expr (HsPar e@(L _ (ETypeApp _))) = ppr_lexpr e -- Hamidhasan 
+-- ppr_expr (HsPar e@(L _ (ETypeApp _))) = ppr_lexpr e -- Hamidhasan 
 ppr_expr (HsPar e)       = parens (ppr_lexpr e)
 
 ppr_expr (HsCoreAnn s e)
@@ -554,9 +555,7 @@ ppr_expr (HsSCC lbl expr)
           pprParendExpr expr ]
 
 ppr_expr (HsWrap co_fn e) = pprHsWrapper (pprExpr e) co_fn
-ppr_expr (ETypeApp (Just ty))      = char '@' <> ppr ty
-ppr_expr (ETypeApp Nothing) = char '@' <> char '_'
-                                 -- Hamidhasan TODO: Fix once syntax is finalized
+ppr_expr (ETypeApp typeapp) = ppr typeapp        -- Hamidhasan TODO: Fix once syntax is finalized
 
 ppr_expr (HsSpliceE s)       = pprSplice s
 ppr_expr (HsBracket b)       = pprHsBracket b

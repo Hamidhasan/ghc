@@ -459,7 +459,7 @@ This invariant has several crucial consequences:
   the TvSubstEnv is enough
 
 * In substTy, substTheta, we can short-circuit when the TvSubstEnv is empty
-\end{code}
+
 
 
 

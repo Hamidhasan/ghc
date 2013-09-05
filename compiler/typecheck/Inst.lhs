@@ -178,10 +178,10 @@ deeplyInstantiate orig ty
   = do { (_, tys, subst) <- tcInstTyVars tvs
        ; ids1  <- newSysLocalIds (fsLit "di") (substTys subst arg_tys)
        ; wrap1 <- instCall orig tys (substTheta subst theta)
-       ; warnTc True $ text "Deeply instantiate...arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+>
+{-       ; warnTc True $ text "Deeply instantiate...arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+> --Hamidhasan
          ppr tvs $$ text "theta:" <+> ppr theta <+> text "rho:" <+> ppr rho $$ text "tys:" <+>
          ppr tys <+> text "subst:" <+> ppr subst $$ text "ids1:" <+> ppr ids1 <+> text "wrap1:"
-         <+> ppr wrap1
+         <+> ppr wrap1 -}
        ; (wrap2, rho2) <- deeplyInstantiate orig (substTy subst rho)
        ; return (mkWpLams ids1 
                     <.> wrap2

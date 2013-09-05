@@ -99,9 +99,9 @@ $decdigit  = $ascdigit -- for now, should really be $digit (ToDo)
 $digit     = [$ascdigit $unidigit]
 
 $special   = [\(\)\,\;\[\]\`\{\}]
-$ascsymbol = [\!\#\$\%\&\*\+\.\/\<\=\>\?\\\^\@\|\-\~]
+$ascsymbol = [\!\#\$\%\&\*\+\.\/\<\=\>\?\\\^\|\-\~] -- Hamidhasan: Note @ has been removed
 $unisymbol = \x04 -- Trick Alex into handling Unicode. See alexGetChar.
-$symbol    = [$ascsymbol $unisymbol] # [$special \_\:\"\']
+$symbol    = [$ascsymbol $unisymbol] # [$special \_\:\"\'\@]
 
 $unilarge  = \x01 -- Trick Alex into handling Unicode. See alexGetChar.
 $asclarge  = [A-Z]
@@ -116,7 +116,7 @@ $graphic   = [$small $large $symbol $digit $special $unigraphic \:\"\']
 
 $octit     = 0-7
 $hexit     = [$decdigit A-F a-f]
-$symchar   = [$symbol \:]
+$symchar   = [$symbol \: \@]
 $nl        = [\n\r]
 $idchar    = [$small $large $digit \']
 
@@ -129,6 +129,7 @@ $docsym    = [\| \^ \* \$]
 
 @varsym    = $symbol $symchar*
 @consym    = \: $symchar*
+@atsym     = \@ $symchar*
 
 @decimal     = $decdigit+
 @octal       = $octit+
@@ -359,6 +360,10 @@ $tab+         { warn Opt_WarnTabs (text "Tab character") }
   \}                                    { close_brace }
 }
 
+-- <0> { Hamidhasan
+-- \@ / { ifExtension explicitTypeApplicationEnabled } { typeAppToken }
+-- }
+
 <0,option_prags> {
   @qual @varid                  { idtoken qvarid }
   @qual @conid                  { idtoken qconid }
@@ -373,16 +378,19 @@ $tab+         { warn Opt_WarnTabs (text "Tab character") }
   @conid "#"+       / { ifExtension magicHashEnabled } { idtoken conid }
 }
 
-<0> { -- Hamidhasan: special for parsing type application refactor
-  \ \@                { special ITatapp }
-}
+-- <0> { -- Hamidhasan: special for parsing type application refactor ... ifExtension explicitTypeApplicationEnabled
+-- `alexAndPred` (precededBy ' ')
+--   [$tab $whitechar]+ \@    / { ifExtension explicitTypeApplicationEnabled } { warnThen Opt_WarnTabs (text "typeapp") (typeAppToken) }
+-- }
 -- ToDo: - move `var` and (sym) into lexical syntax?
 --       - remove backquote from $special?
 <0> {
   @qual @varsym                                    { idtoken qvarsym }
   @qual @consym                                    { idtoken qconsym }
+  @qual @atsym                                     { idtoken qvarsym } --if its qualified, it certainly isn't a type application
   @varsym                                          { varsym }
   @consym                                          { consym }
+  @atsym                                           { atsym  }
 }
 
 
@@ -396,7 +404,7 @@ $tab+         { warn Opt_WarnTabs (text "Tab character") }
 
   -- Normal rational literals (:: Fractional a => a, from Rational)
   @floating_point    { strtoken tok_float }
-}
+  }
 
 <0> {
   -- Unboxed ints (:: Int#) and words (:: Word#)
@@ -510,8 +518,8 @@ data Token
   | ITvbar
   | ITlarrow
   | ITrarrow
-  | ITat                        -- Hamidhasan  
-  | ITatapp
+  | ITat
+  | ITatapp                     -- Hamidhasan  
   | ITtilde
   | ITtildehsh
   | ITdarrow
@@ -519,7 +527,6 @@ data Token
   | ITbang
   | ITstar
   | ITdot
---  | ITamper                     -- Hamidhasan for Explicit Type App
 
   | ITbiglam                    -- GHC-extension symbols
 
@@ -685,7 +692,7 @@ reservedSymsFM = listToUFM $
        ,("<-",  ITlarrow,   always)
        ,("->",  ITrarrow,   always)
        ,("@",   ITat,       always)
-       ,(" @",  ITatapp,   always)
+       ,(" @",  ITatapp,    explicitTypeApplicationEnabled)
        ,("~",   ITtilde,    always)
        ,("~#",  ITtildehsh, magicHashEnabled)
        ,("=>",  ITdarrow,   always)
@@ -781,6 +788,10 @@ nextCharIs buf p = not (atEnd buf) && p (currentChar buf)
 {-# INLINE nextCharIsNot #-}
 nextCharIsNot :: StringBuffer -> (Char -> Bool) -> Bool
 nextCharIsNot buf p = not (nextCharIs buf p)
+
+{-# INLINE prevCharIs #-}
+prevCharIs :: StringBuffer -> (Char -> Bool) -> Char -> Bool
+prevCharIs buf p deflt = p (prevChar buf deflt)
 
 notFollowedBy :: Char -> AlexAccPred Int
 notFollowedBy char _ _ _ (AI _ buf)
@@ -1041,9 +1052,34 @@ sym con span buf len =
       extsEnabled <- extension exts
       let !tk | extsEnabled = keyword
               | otherwise   = con fs
-      return $ L span tk
+      return $ L span tk 
     Nothing ->
       return $ L span $! con fs
+  where
+    !fs = lexemeToFastString buf len
+
+-- Exactly the same as sym, but because it performs one
+-- additional check, it is a different function, for efficiency's sake.
+-- Hamidhasan. The alternative is to check it at every symbol which
+-- ends up failing several performance tests.
+{- addWarning Opt_WarnTabs noSrcSpan $ text "sym extsEnabled:"<+> ppr extsEnabled <+> text "fs" <+> ftext fs $$ text "is at?" <+> ppr (fsLit "@" == fs) <+> text "currentChar" <+> char (currentChar buf) <+> text "prevChar" <+> char (prevChar buf 'h')
+      if ((fsLit "@") == fs)
+        then (if ((prevChar buf 'H') `elem` " \n\r\t\f\v") then return $ L span ITatapp
+              else return $ L span tk)
+        else -}
+atsym :: Action
+atsym span buf len =
+  case lookupUFM reservedSymsFM fs of
+    Just (keyword, exts) -> do
+      extsEnabled <- extension exts
+      let !tk | extsEnabled = keyword
+              | otherwise   = ITvarsym fs
+      etyOn <- extension explicitTypeApplicationEnabled
+      if (etyOn && prevCharIs buf (`elem` " \n\r\t\f\v") 'H')
+        then return $ L span ITatapp
+        else return $ L span tk
+    Nothing ->
+      return $ L span $! ITvarsym fs
   where
     !fs = lexemeToFastString buf len
 

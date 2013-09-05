@@ -35,11 +35,18 @@ newtype N = MkN { unMkN :: forall a. Show a => a -> String }
 n = MkN show
 foo :: Bool -> String
 foo = unMkN n @Bool   -- Fails without parens! Not anymore!
-foo = unMkN (n @Bool)
+boo :: Bool -> String --(compiler doesn't infer this type! It infers a -> String!)
+boo = unMkN (n @Bool)
 
 (&&) :: Bool -> Bool -> Bool
 (b@True) && True = True
 _ && _ = False
+
+(*@&) :: a -> a -> (a, a)
+x *@& y = (x, y)
+
+(@&) :: a -> a -> (a, a)
+x @& y = (x, y)
 
 main :: IO ()
 main = do
@@ -49,3 +56,4 @@ main = do
          print $ listpair @(Maybe Int) [Just 12, Nothing]
          print $ listpair @(Maybe Bool) $ (Just True) : (Just False) : (Nothing @Bool) : []
          print $ dblTuple @Foo @[Maybe Int] ((Foo 7 False), ([Just 5, Nothing]))
+         print $ 12 @& 5

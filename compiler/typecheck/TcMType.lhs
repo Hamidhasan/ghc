@@ -40,8 +40,8 @@ module TcMType (
 
   --------------------------------
   -- Instantiation
-  tcInstTyVars, tcInstSigTyVars, newSigTyVar, tcInstTyVarsETypes,
-  tcInstType,
+  tcInstTyVars, tcInstSigTyVars, newSigTyVar, 
+  tcInstType, tcInstTyVarX,
   tcInstSkolTyVars, tcInstSkolTyVarsLoc, tcInstSuperSkolTyVars,
   tcInstSkolTyVarsX, tcInstSuperSkolTyVarsX,
   tcInstSkolTyVar, tcInstSkolType,
@@ -474,75 +474,47 @@ tcInstTyVarX subst tyvar
               new_tv = mkTcTyVar name kind details 
         ; return (extendTvSubst subst tyvar (mkTyVarTy new_tv), new_tv) }
 
+-- Hamidhasan 
+{-
+createExplicitSubst :: [HsTypeApp Name] -> [TyVar]  ->                 -- Type Applications, and TyVars
+                       ([HsTypeApp Name], [Either Type TyVar], TvSubst) ->
+                       TcM ([HsTypeApp Name], [Either Type TyVar], TvSubst)
+                       -- returns remaining explicit types, Either etypes OR tyvars, and the tvSubst
+                       -- The "either list" is handled by tcInstTyVarsETypes - this preserves correct wrapping order
+createExplicitSubst [] [] (remEtys, etyORvars, subst) = return (reverse remEtys, reverse etyORvars, subst)
+createExplicitSubst e@((ExplicitTy _ (Just ety)):etys) (tv:tvs) (remEtys, etyORvars, subst) =
+  if (isTypeVar tv) then --if there is a type, we add it to the subst
+    createExplicitSubst etys tvs (remEtys, (Left ety):etyORvars, extendTvSubst subst tv ety)
+  else -- if its a kind variable, leave it alone, and propagate the etype
+    createExplicitSubst e tvs (remEtys, (Right tv):etyORvars, subst)
 
--- These 4 functions below are essentially the same as the above tcInstTyVar series,
--- except that they thread explicit types in between the new type variables.
--- See Note [Instantiating TyVars with Explicit Types]
-tcInstTyVarsETypes :: [Either Type TKVar] -> TcM ([TcTyVar], [TcType], TvSubst)
-tcInstTyVarsETypes etypesORtyvars = tcInstTyVarsETypesX emptyTvSubst etypesORtyvars
+createExplicitSubst e@((ExplicitTy hsType Nothing):etys) (tv:tvs) (remEtys, etyORvars, subst)
+ = -- do { warnTc True $ text "Hamidhasan createExplicitSubst...etys:" <+> ppr e <+> text "tvs:" <+> ppr (tv:tvs) $$
+   --   text "etype kinds:" <+> ppr (map kindofEType e) <+> text "tv kinds:" <+> ppr (map idType (tv:tvs)) $$
+   --   text "is first tv a tyvar?" <+> ppr (isTypeVar tv)
+   do { if (isTypeVar tv) then do --(idType tv) gets the kind of the type variable
+           if (deferKindVariable (tyVarKind tv)) then
+               do { (etype, _) <- tcLHsType hsType
+                  ; createExplicitSubst (etys) (tvs)
+                    (remEtys, (Left etype):etyORvars, extendTvSubst subst tv etype) }
+             else
+               do { etype <- tcCheckLHsType hsType (tyVarKind tv)
+                  ; createExplicitSubst (etys) (tvs)
+                    (remEtys, (Left etype):etyORvars, extendTvSubst subst tv etype) }
+        else
+          createExplicitSubst e tvs (remEtys, ((Right tv):etyORvars), subst) }
 
-tcInstTyVarsETypesX :: TvSubst -> [Either Type TKVar] -> TcM ([TcTyVar], [TcType], TvSubst)
-tcInstTyVarsETypesX subst etypesORtyvars =
-  do { (subst', etypesORtyvars') <- mapAccumLM tcInstTyVarETypes subst etypesORtyvars
-     ; (tyvars', tyvarsANDetypes) <- return $ resolveETypesTyvars etypesORtyvars' ([], [])
-     ; return (tyvars', tyvarsANDetypes, subst') }
-
-tcInstTyVarETypes :: TvSubst -> Either Type TKVar -> TcM (TvSubst, Either Type TcTyVar)
-tcInstTyVarETypes subst (Left ety)
-  = return (subst, Left ety)
-tcInstTyVarETypes subst (Right tyvar)
-  = do  { uniq <- newUnique
-        ; details <- newMetaDetails TauTv
-        ; let name   = mkSystemName uniq (getOccName tyvar)
-              kind   = substTy subst (tyVarKind tyvar)
-              new_tv = mkTcTyVar name kind details 
-        ; return (extendTvSubst subst tyvar (mkTyVarTy new_tv), Right new_tv) }
-
-resolveETypesTyvars :: [Either Type TcTyVar] -> ([TcTyVar], [TcType])
-                       -> ([TcTyVar], [TcType])
-resolveETypesTyvars [] (tyvars, bothTypes) = (reverse tyvars, reverse bothTypes)
-resolveETypesTyvars (Left ety:eithers) (tyvars, bothTypes) =
-  resolveETypesTyvars eithers (tyvars, ety:bothTypes)
-resolveETypesTyvars (Right tyvar:eithers) (tyvars, bothTypes) =
-  resolveETypesTyvars eithers (tyvar:tyvars, (mkTyVarTy tyvar):bothTypes)
+createExplicitSubst (Unknown:etys) (tv:tvs) (remEtys, etyORvars, subst) = -- if there is no type - "@_" - we add it to tvs
+  createExplicitSubst etys tvs (remEtys, (Right tv):etyORvars, subst)             -- and we "throw away" the Nothing
+  
+createExplicitSubst [] (tv:tvs) (remEtys, etyORvars, subst) =             -- When we run out of etypes, we add the rest of
+  createExplicitSubst [] tvs (remEtys, (Right tv):etyORvars, subst)       -- the type variables
+  
+createExplicitSubst (ety:etys) [] (remEtys, etyORvars, subst) =
+  createExplicitSubst etys [] (ety:remEtys, etyORvars, subst)
+-}
 
 \end{code}
-
-Hamidhasan Note [Instantiating TyVars with Explicit Types]
-
-Note [Instantiating TyVars with Explicit Types]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-In order to handle explicit type application correctly, by generating a
-well-formed wrapper that correctly maps explicit types and type variables
-in the correct order, we create a similar tcInstTyVar set of functions that
-threads both explicit types and type variables through until the type
-variables are instantiated into TcTypes, in which the explicit types
-are interleaved between them in the order that the programmer intended.
-
-This interleaving is necessary (and practically impossible to do anywhere else)
-so that the typechecker can generate Type Application HsWrappers in the
-correct order. Otherwise, we end up with incorrect type applications in core.
-For example:
-
-  quad :: a -> b -> c -> d -> (a, b, c, d)
-  quad x y = (x, y)
-
-  silly :: (a, Bool, Char, b)
-  silly = quad @_ @Bool @Char @_ 5 True 'a' "Hello" 
-
-We should generate the first of the following, but can easily end up with some
-mismatched applications:
-
-  quad @Integer @Bool @Char @String 5 True 'a' "Hello" -- what we want to generate
-
-  quad @Bool @Char @Integer @String 5 True 'a' "Hello" -- if we wrap explicit types first,
-                                                       -- then the resolved type variables
-
-  quad @Integer @String @Bool @Char 5 True 'a' "Hello" -- if we wrap resolved type variables,
-                                                       -- then explicit types
-
-Thus, the wrappers must be interleaved deep within the flow of the typechecker.
-This is most conveniently done here.
 
 %************************************************************************
 %*									*

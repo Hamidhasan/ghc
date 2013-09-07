@@ -3,7 +3,7 @@
 
  
 {-# OPTIONS -Wall -fwarn-tabs -fno-warn-type-defaults #-}
-{-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
+{-# LANGUAGE ExplicitTypeApplication, RankNTypes, ScopedTypeVariables #-}
 
 module Main where
 import Prelude
@@ -21,8 +21,16 @@ pair x y = (x, y)
 sid :: (forall a. a -> a) -> (forall b. b -> b)
 sid x = x
 
+foo :: forall a b. a -> b -> (a, b)
+foo x y = (x, y)
+
+bar :: forall a. a -> forall b. b -> (a, b))
+bar x y = (x, y)
+
 main :: IO ()
 main = do
          print $ pair 3 True
          print $ pair 3 True
+         print $ foo 3 5
+         print $ bar 3 5
   --       print $ sid &(Int -> Int) (+ 5)

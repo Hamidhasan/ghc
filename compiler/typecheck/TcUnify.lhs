@@ -1107,6 +1107,8 @@ unifyKindX :: TcKind           -- k1 (actual)
 -- but recurses into the simpler unifyKindEq for any sub-terms
 -- The sub-kinding stuff only applies at top level
 
+-- Hamidhasan: There is some problem here with kinds, check it pls.
+
 unifyKindX (TyVarTy kv1) k2 = uKVar NotSwapped unifyKindX kv1 k2
 unifyKindX k1 (TyVarTy kv2) = uKVar IsSwapped  unifyKindX kv2 k1
 
@@ -1139,6 +1141,8 @@ uKVar swapped unify_kind kv1 k2
 
   | otherwise 
   = return Nothing
+    -- addErrTc $ text "failed to unify ukvars. kv1:" <+> ppr kv1 <+> text "k2" <+> ppr k2
+    
 
 {- Note [Unifying kind variables]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

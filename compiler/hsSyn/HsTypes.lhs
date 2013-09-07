@@ -276,9 +276,10 @@ mkHsOpTy :: LHsType name -> Located name -> LHsType name -> HsType name
 mkHsOpTy ty1 op ty2 = HsOpTy ty1 (WpKiApps [], op) ty2
 
 -- Hamidhasan Explicit Type Application datatype convenient for threading
-data HsTypeApp name
+data HsTypeApp name 
   = Unknown
   | ExplicitTy (LHsType name) (Maybe Type)
+--   ExplicitKi (LHsKind name) (Maybe Kind)   Very easy to extend this for kind application         
   deriving (Data, Typeable)
 -- The explicit type has a maybe associated with it. This is because we
 -- need to first check the LHsType. TypeApp will always be first created with

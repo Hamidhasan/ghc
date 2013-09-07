@@ -646,6 +646,7 @@ hsExprNeedsParens (HsBracket {})      = False
 hsExprNeedsParens (HsBracketOut _ []) = False
 hsExprNeedsParens (HsDo sc _ _)
        | isListCompExpr sc            = False
+hsExprNeedsParens (ETypeApp {})       = False
 hsExprNeedsParens _ = True
 
 

@@ -20,6 +20,8 @@ pairup_sig u w = (u, w)
 
 main :: IO ()
 main = do
+         print $ pairup_sig @Bool @Int False 7
+         print (pairup_sig @Bool @Int False 7)
          print (pairup_nosig (fromInteger 1) False)
          print (pairup_nosig @Int @Bool (fromInteger 5) True)
          print $ pairup_sig @Bool @Int False 7

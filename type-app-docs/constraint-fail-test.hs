@@ -25,7 +25,7 @@ bool = False
  -- it mentions the "addOne" instead
 main :: IO ()
 main = do
-         print $ addOne &Bool 5
-         print $ addOne &Bool True
-         print $ addOne &Bool bool
+         print $ addOne @Bool 5
+         print $ addOne @Bool True
+         print $ addOne @Bool bool
          

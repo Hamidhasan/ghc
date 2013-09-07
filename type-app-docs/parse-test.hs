@@ -16,8 +16,6 @@ f u v = (u, v)
 g :: Int -> Int -> (Int, Int)
 g u v = f @(Int) @Int u v
 
-
-
 dblTuple :: (a, b) -> ((a, b), b)
 dblTuple e@(_,y) = (e, y)
 
@@ -35,8 +33,10 @@ newtype N = MkN { unMkN :: forall a. Show a => a -> String }
 n = MkN show
 foo :: Bool -> String
 foo = unMkN n @Bool   -- Fails without parens! Not anymore!
-boo :: Bool -> String --(compiler doesn't infer this type! It infers a -> String!)
-boo = unMkN (n @Bool)
+
+boo = unMkN @Bool n
+-- boo :: Bool -> String --(compiler doesn't infer this type! It infers a -> String!)
+-- boo = unMkN (n @Bool)
 
 (&&) :: Bool -> Bool -> Bool
 (b@True) && True = True

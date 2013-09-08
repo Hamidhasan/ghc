@@ -701,9 +701,16 @@ ppr_tylit (HsNumTy i) = integer i
 ppr_tylit (HsStrTy s) = text (show s)
 
 pprHsTypeApp :: (OutputableBndr name) => HsTypeApp name -> SDoc -- Hamidhasan
-pprHsTypeApp (ExplicitTy hsTy Nothing)  = char '@' <> ppr hsTy
-pprHsTypeApp (ExplicitTy _ (Just ty))   = char '@' <> ppr ty
-pprHsTypeApp Unknown                    = char '@' <> char '_'
+pprHsTypeApp (ExplicitTy hsTy _ ) =
+  if (eTypeAppNeedsParens hsTy) then char '@' <> (parens $ ppr hsTy)
+  else char '@' <> ppr hsTy
+pprHsTypeApp Unknown                = char '@' <> char '_'
+
+eTypeAppNeedsParens :: LHsType id -> Bool
+eTypeAppNeedsParens (L _ (HsTyVar _))  = False
+eTypeAppNeedsParens (L _ (HsListTy _)) = False
+eTypeAppNeedsParens (L _ (HsPArrTy _)) = False
+eTypeAppNeedsParens _                  = True
 \end{code}
 
 

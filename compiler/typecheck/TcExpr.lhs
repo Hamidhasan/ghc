@@ -1227,7 +1227,7 @@ tcInferFun fun etypes
        ; fun_ty' <- zonkTcType fun_ty
 
        ; (wrap, rho, remainingETypes) <- deeplyInstantiateApp AppOrigin etypes fun_ty' -- Hamidhasan added [] for type apps 
-       ; if (not (null remainingETypes)) then   --If there are any remaining explicit types even after
+       ; if (not (null remainingETypes) && (any (isEType) remainingETypes)) then   --If there are any remaining explicit types even after
            let len = length etypes in           --deep instantiation, then warn the programmer
            addErrTc $                   
            text "Provided" <+> speakNOf len (text "explicit type") <> char ',' $$
@@ -1389,11 +1389,13 @@ tcInferIdWithOrig orig id_name etypes
            text "Provided" <+> speakNOf len (text "extra explicit type") <> char ',' <+>
            text "which the function" $$ (quotes $ ppr id) <+> text "could not use for substitution." $$
            text "The following type argument" <> (if len > 1 then text "s were" else text " was") $$
-           text "not applied:" <+> ppr remainingETypes
+           text "not applied:" <+> ppr remainingETypes $$ text "Debug: id:" <+> ppr id <+> text "id's type:" <+>
+           ppr (idType id) $$ text "id_exp:" <+> ppr id_expr <+> text "id_rho:" <+> ppr id_rho
+              $$ text "rho:" <+> ppr rho 
          else return ()
-       ; if (null etypes) then return ()
+{-       ; if (null etypes) then return ()
          else warnTc True $ text "tcInferIdWithOrig...id_expr:" <+> ppr id_expr <+> text "id_rho:" <+> ppr id_rho
-              $$ text "wrap:" <+> ppr wrap <+> text "rho:" <+> ppr rho <+> text "remainingETypes:" <+> ppr remainingETypes
+              $$ text "wrap:" <+> ppr wrap <+> text "rho:" <+> ppr rho <+> text "remainingETypes:" <+> ppr remainingETypes -}
        ; return (mkHsWrap wrap id_expr, rho) }
   where
     lookup_id :: TcM TcId
@@ -1480,7 +1482,7 @@ instantiateOuter orig id etypes
            text "Type environments are not disjoint: " <> ppr tenv $$ ppr etenv else return () -}
 
        ; wrap <- instCall orig tys theta'
-       ; if (null etypes) then return () else -- Hamidhasan
+{-       ; if (null etypes) then return () else -- Hamidhasan
          warnTc True $ text "instantiateOuter: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
                        text " theta: " <> ppr theta <> text " tau: " <> ppr tau $$
                        text " etypes: " <> ppr etypes <> text " tys: " <> ppr tys $$
@@ -1491,8 +1493,8 @@ instantiateOuter orig id etypes
                        text "idKind:" <+> ppr (typeKind $ idType id) $$
                        text "idtype of tvs" <+> ppr (map idType tvs) $$
                        text "kind of tvs" <+> ppr (map typeKind (map idType tvs)) $$
-                       text "tyVarKind of tvs" <+> ppr (map tyVarKind tvs)
-                       
+                       text "tyVarKind of tvs" <+> ppr (map tyVarKind tvs) 
+                       -}
        ; return (mkHsWrap wrap (HsVar id), TcType.substTy subst tau, remainingETypes) }
   where
     (tvs, theta, tau) = tcSplitSigmaTy (idType id)
@@ -1513,11 +1515,11 @@ deeplyInstantiateApp orig etypes ty
              
        ; ids1  <- newSysLocalIds (fsLit "di") (substTys subst arg_tys)
        ; wrap1 <- instCall orig tys (substTheta subst theta)
-       ; warnTc True $ text "Deeply instantiate...ty:"<+> ppr ty $$ text "arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+>
+{-       ; warnTc True $ text "Deeply instantiate...ty:"<+> ppr ty $$ text "arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+>
          ppr tvs $$ text "theta:" <+> ppr theta <+> text "rho:" <+> ppr rho $$ text "tys:" <+>
          ppr tys <+> text "subst:" <+> ppr subst $$ text "ids1:" <+> ppr ids1 <+> text "wrap1:"
          <+> ppr wrap1 $$ text "etypes:" <+> ppr etypes
-         <+> text "remaining etypes:" <+> ppr remainingETypes
+         <+> text "remaining etypes:" <+> ppr remainingETypes -}
      {-  ; if (not $ null etypes) then pprSorry "deeplyInstantiate" $
                                      text "Deeply instantiate...arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+>
          ppr tvs $$ text "theta:" <+> ppr theta <+> text "rho:" <+> ppr rho $$ text "tys:" <+>

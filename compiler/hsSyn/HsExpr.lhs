@@ -555,7 +555,8 @@ ppr_expr (HsSCC lbl expr)
           pprParendExpr expr ]
 
 ppr_expr (HsWrap co_fn e) = pprHsWrapper (pprExpr e) co_fn
-ppr_expr (ETypeApp typeapp) = ppr typeapp        -- Hamidhasan TODO: Fix once syntax is finalized
+
+ppr_expr (ETypeApp typeapp) = ppr typeapp
 
 ppr_expr (HsSpliceE s)       = pprSplice s
 ppr_expr (HsBracket b)       = pprHsBracket b

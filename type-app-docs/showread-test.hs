@@ -3,6 +3,7 @@
 
  
 {-# OPTIONS -Wall -fwarn-tabs -fno-warn-type-defaults #-}
+{-# LANGUAGE ExplicitTypeApplication #-}
 
 module Main where
 import Prelude
@@ -22,8 +23,12 @@ provide power to the programmer - unlike in "pair-test.hs", it is
 necessary in order for the answers to typecheck.
 -}
 
+foo :: String
+foo = show (read @Float "12")
+
 main :: IO ()
 main = do
-         print $ show (read @Int "3")
+--         print $ show (read "3")
+         print $ show (read @Int "3")p
          print $ show @Float (read "5")
-         print $ show @Integer (read @Integer "7")
+         print $ show @Integer (read @Integer "7")ppp

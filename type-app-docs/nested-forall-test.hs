@@ -3,7 +3,7 @@
 
  
 {-# OPTIONS -Wall -fwarn-tabs -fno-warn-type-defaults #-}
-{-# LANGUAGE RankNTypes, ScopedTypeVariables, ExplicitTypeApplication #-}
+{-# LANGUAGE RankNTypes, ScopedTypeVariables, ExplicitTypeApplication, PolyKinds, KindSignatures #-}
 
 module Main where
 import Prelude
@@ -22,8 +22,9 @@ triple x y z = (x, y, z)
 
 sid :: (forall a. a -> a) -> (forall b. b -> b)
 sid x = x
+bar = (sid @(Int) id) 5
 
-many :: forall a b. a -> b -> forall c. [c] -> forall d . Num d => d -> (a, b, [c], d)
+many :: forall a (b :: * -> *). Ord a => a -> b a -> forall c. [c] -> forall d . Num d => d -> (a, b a, [c], d)
 many a b c d = (a, b, c, d)
 
 main :: IO ()
@@ -31,7 +32,5 @@ main = do
          print $ pair 5 False
          print $ pair @Int 3 @Bool True
          print $ triple @Int 12 @Float 5 @String "Hello"
-         print $ (sid id) 5
          
-  --      print ((sid @(Int -> Integer) (id)) 5)
-   --      print $ many @Int @Bool 5 True @Char "hello" @Float 17
+         print $ many @Int @Maybe 5 Nothing @Char "Hello" @Float 17

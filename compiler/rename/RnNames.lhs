@@ -41,6 +41,7 @@ import Data.Map         ( Map )
 import qualified Data.Map as Map
 import Data.List        ( partition, (\\), find )
 import qualified Data.Set as Set
+import System.FilePath  ((</>))
 import System.IO
 \end{code}
 
@@ -968,7 +969,7 @@ rnExports explicit_mod exports
         ; let real_exports
                  | explicit_mod = exports
                  | ghcLink dflags == LinkInMemory = Nothing
-                 | otherwise = Just ([noLoc (IEVar main_RDR_Unqual)])
+                 | otherwise = Just [noLoc (IEVar main_RDR_Unqual)]
                         -- ToDo: the 'noLoc' here is unhelpful if 'main'
                         --       turns out to be out of scope
 
@@ -1468,7 +1469,7 @@ printMinimalImports imports_w_usage
        ; this_mod <- getModule
        ; dflags   <- getDynFlags
        ; liftIO $
-         do { h <- openFile (mkFilename this_mod) WriteMode
+         do { h <- openFile (mkFilename dflags this_mod) WriteMode
             ; printForUser dflags h neverQualify (vcat (map ppr imports')) }
               -- The neverQualify is important.  We are printing Names
               -- but they are in the context of an 'import' decl, and
@@ -1477,7 +1478,11 @@ printMinimalImports imports_w_usage
               -- not    import Blag( Blag.f, Blag.g )!
        }
   where
-    mkFilename this_mod = moduleNameString (moduleName this_mod) ++ ".imports"
+    mkFilename dflags this_mod
+      | Just d <- dumpDir dflags = d </> basefn
+      | otherwise                = basefn
+      where
+        basefn = moduleNameString (moduleName this_mod) ++ ".imports"
 
     mk_minimal (L l decl, used, unused)
       | null unused

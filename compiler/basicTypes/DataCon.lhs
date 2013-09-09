@@ -36,7 +36,9 @@ module DataCon (
 	dataConIsInfix,
 	dataConWorkId, dataConWrapId, dataConWrapId_maybe, dataConImplicitIds,
 	dataConRepStrictness, dataConRepBangs, dataConBoxer,
-	
+
+	splitDataProductType_maybe,
+
 	-- ** Predicates on DataCons
 	isNullarySrcDataCon, isNullaryRepDataCon, isTupleDataCon, isUnboxedTupleCon,
 	isVanillaDataCon, classDataCon, dataConCannotMatch,
@@ -650,11 +652,12 @@ mkDataCon name declared_infix
       | isJust (promotableTyCon_maybe rep_tycon)
           -- The TyCon is promotable only if all its datacons
           -- are, so the promoteType for prom_kind should succeed
-      = Just (mkPromotedDataCon con name (getUnique name) prom_kind arity)
+      = Just (mkPromotedDataCon con name (getUnique name) prom_kind roles)
       | otherwise 
       = Nothing          
     prom_kind = promoteType (dataConUserType con)
-    arity     = dataConSourceArity con
+    roles = map (const Nominal)          (univ_tvs ++ ex_tvs) ++
+            map (const Representational) orig_arg_tys
 
 eqSpecPreds :: [(TyVar,Type)] -> ThetaType
 eqSpecPreds spec = [ mkEqPred (mkTyVarTy tv) ty | (tv,ty) <- spec ]
@@ -996,6 +999,7 @@ dataConCannotMatch tys con
 \begin{code}
 buildAlgTyCon :: Name 
               -> [TyVar]               -- ^ Kind variables and type variables
+              -> [Role]
 	      -> Maybe CType
 	      -> ThetaType	       -- ^ Stupid theta
 	      -> AlgTyConRhs
@@ -1005,14 +1009,14 @@ buildAlgTyCon :: Name
               -> TyConParent
 	      -> TyCon
 
-buildAlgTyCon tc_name ktvs cType stupid_theta rhs 
+buildAlgTyCon tc_name ktvs roles cType stupid_theta rhs 
               is_rec is_promotable gadt_syn parent
   = tc
   where 
     kind = mkPiKinds ktvs liftedTypeKind
 
     -- tc and mb_promoted_tc are mutually recursive
-    tc = mkAlgTyCon tc_name kind ktvs cType stupid_theta 
+    tc = mkAlgTyCon tc_name kind ktvs roles cType stupid_theta 
                     rhs parent is_rec gadt_syn 
                     mb_promoted_tc
 
@@ -1083,4 +1087,42 @@ promoteKind (TyConApp tc [])
   | tc `hasKey` liftedTypeKindTyConKey = superKind
 promoteKind (FunTy arg res) = FunTy (promoteKind arg) (promoteKind res)
 promoteKind k = pprPanic "promoteKind" (ppr k)
+\end{code}
+
+%************************************************************************
+%*									*
+\subsection{Splitting products}
+%*									*
+%************************************************************************
+
+\begin{code}
+-- | Extract the type constructor, type argument, data constructor and it's
+-- /representation/ argument types from a type if it is a product type.
+--
+-- Precisely, we return @Just@ for any type that is all of:
+--
+--  * Concrete (i.e. constructors visible)
+--
+--  * Single-constructor
+--
+--  * Not existentially quantified
+--
+-- Whether the type is a @data@ type or a @newtype@
+splitDataProductType_maybe
+	:: Type 			-- ^ A product type, perhaps
+	-> Maybe (TyCon, 		-- The type constructor
+		  [Type],		-- Type args of the tycon
+		  DataCon,		-- The data constructor
+		  [Type])		-- Its /representation/ arg types
+
+	-- Rejecing existentials is conservative.  Maybe some things
+	-- could be made to work with them, but I'm not going to sweat
+	-- it through till someone finds it's important.
+
+splitDataProductType_maybe ty
+  | Just (tycon, ty_args) <- splitTyConApp_maybe ty
+  , Just con <- isDataProductTyCon_maybe tycon
+  = Just (tycon, ty_args, con, dataConInstArgTys con ty_args)
+  | otherwise
+  = Nothing
 \end{code}

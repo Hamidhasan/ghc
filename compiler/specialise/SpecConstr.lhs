@@ -560,7 +560,7 @@ Note [NoSpecConstr]
 ~~~~~~~~~~~~~~~~~~~
 The ignoreDataCon stuff allows you to say
     {-# ANN type T NoSpecConstr #-}
-to mean "don't specialise on arguments of this type.  It was added
+to mean "don't specialise on arguments of this type".  It was added
 before we had ForceSpecConstr.  Lacking ForceSpecConstr we specialised
 regardless of size; and then we needed a way to turn that *off*.  Now
 that we have ForceSpecConstr, this NoSpecConstr is probably redundant.
@@ -1780,7 +1780,7 @@ argToPat env in_scope val_env (Cast arg co) arg_occ
         { -- Make a wild-card pattern for the coercion
           uniq <- getUniqueUs
         ; let co_name = mkSysTvName uniq (fsLit "sg")
-              co_var  = mkCoVar co_name (mkCoercionType ty1 ty2)
+              co_var  = mkCoVar co_name (mkCoercionType Representational ty1 ty2)
         ; return (interesting, Cast arg' (mkCoVarCo co_var)) } }
   where
     Pair ty1 ty2 = coercionKind co

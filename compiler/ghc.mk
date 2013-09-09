@@ -341,8 +341,23 @@ else
 compiler_CONFIGURE_OPTS += --ghc-option=-DNO_REGS
 endif
 
-ifeq "$(GhcProfiled)" "YES"
+# If we're bootstrapping the compiler during stage2, or we're being
+# built by a GHC whose version is > 7.8, we need -fcmm-sink to be
+# passed to the compiler. This is required on x86 to avoid the
+# register allocator running out of stack slots when compiling this
+# module with -fPIC -dynamic.
+ifeq "$(CMM_SINK_BOOTSTRAP_IS_NEEDED)" "YES"
+compiler/stage1/build/Parser_HC_OPTS += -fcmm-sink
+endif
+# However, we may be using e.g. 7.6, and thus the bootstrap compiler
+# does not need to pass -fcmm-sink, but stage1+ does!
+# We pass -fcmm-sink to every stage != 1
+# See #8182 for all the details
+compiler/stage2/build/Parser_HC_OPTS += -fcmm-sink
+compiler/stage3/build/Parser_HC_OPTS += -fcmm-sink
 
+
+ifeq "$(GhcProfiled)" "YES"
 # If we're profiling GHC then we want SCCs.  However, adding -auto-all
 # everywhere tends to give a hard-to-read profile, and adds lots of
 # overhead.  A better approach is to proceed top-down; identify the
@@ -421,7 +436,7 @@ compiler_stage3_SplitObjs = NO
 # We therefore need to split some of the modules off into a separate
 # DLL. This clump are the modules reachable from DynFlags:
 compiler_stage2_dll0_START_MODULE = DynFlags
-compiler_stage2_dll0_MODULES = Annotations Avail Bag BasicTypes Binary Bitmap BlockId BreakArray BufWrite ByteCodeAsm ByteCodeInstr ByteCodeItbls ByteCodeLink CLabel Class CmdLineParser Cmm CmmCallConv CmmExpr CmmInfo CmmMachOp CmmNode CmmType CmmUtils CoAxiom CodeGen.Platform CodeGen.Platform.ARM CodeGen.Platform.NoRegs CodeGen.Platform.PPC CodeGen.Platform.PPC_Darwin CodeGen.Platform.SPARC CodeGen.Platform.X86 CodeGen.Platform.X86_64 Coercion Config Constants CoreArity CoreFVs CoreSubst CoreSyn CoreTidy CoreUnfold CoreUtils CostCentre DataCon Demand Digraph DriverPhases DynFlags Encoding ErrUtils Exception FamInstEnv FastBool FastFunctions FastMutInt FastString FastTypes Fingerprint FiniteMap ForeignCall Hoopl Hoopl.Dataflow HsBinds HsDecls HsDoc HsExpr HsImpExp HsLit HsPat HsSyn HsTypes HsUtils HscTypes Id IdInfo IfaceSyn IfaceType InstEnv InteractiveEvalTypes Kind ListSetOps Literal Maybes MkCore MkGraph MkId Module MonadUtils Name NameEnv NameSet ObjLink OccName OccurAnal OptCoercion OrdList Outputable PackageConfig Packages Pair Panic Platform PlatformConstants PprCmm PprCmmDecl PprCmmExpr PprCore PrelNames PrelRules Pretty PrimOp RdrName Reg RegClass Rules SMRep Serialized SrcLoc StaticFlags StgCmmArgRep StgCmmClosure StgCmmEnv StgCmmLayout StgCmmMonad StgCmmProf StgCmmTicky StgCmmUtils StgSyn Stream StringBuffer TcEvidence TcType TyCon Type TypeRep TysPrim TysWiredIn Unify UniqFM UniqSet UniqSupply Unique Util Var VarEnv VarSet
+compiler_stage2_dll0_MODULES = Annotations Avail Bag BasicTypes Binary Bitmap BlockId BreakArray BufWrite ByteCodeAsm ByteCodeInstr ByteCodeItbls ByteCodeLink CLabel Class CmdLineParser Cmm CmmCallConv CmmExpr CmmInfo CmmMachOp CmmNode CmmType CmmUtils CoAxiom CodeGen.Platform CodeGen.Platform.ARM CodeGen.Platform.NoRegs CodeGen.Platform.PPC CodeGen.Platform.PPC_Darwin CodeGen.Platform.SPARC CodeGen.Platform.X86 CodeGen.Platform.X86_64 Coercion Config Constants CoreArity CoreFVs CoreSubst CoreSyn CoreTidy CoreUnfold CoreUtils CostCentre DataCon Demand Digraph DriverPhases DynFlags Encoding ErrUtils Exception FamInstEnv FastBool FastFunctions FastMutInt FastString FastTypes Fingerprint FiniteMap ForeignCall Hoopl Hoopl.Dataflow HsBinds HsDecls HsDoc HsExpr HsImpExp HsLit HsPat HsSyn HsTypes HsUtils HscTypes Id IdInfo IfaceSyn IfaceType InstEnv InteractiveEvalTypes Kind ListSetOps Literal Maybes MkCore MkGraph MkId Module MonadUtils Name NameEnv NameSet ObjLink OccName OccurAnal OptCoercion OrdList Outputable PackageConfig Packages Pair Panic Platform PlatformConstants PprCmm PprCmmDecl PprCmmExpr PprCore PrelNames PrelRules Pretty PrimOp RdrName Reg RegClass Rules SMRep Serialized SrcLoc StaticFlags StgCmmArgRep StgCmmClosure StgCmmEnv StgCmmLayout StgCmmMonad StgCmmProf StgCmmTicky StgCmmUtils StgSyn Stream StringBuffer TcEvidence TcType TrieMap TyCon Type TypeRep TysPrim TysWiredIn Unify UniqFM UniqSet UniqSupply Unique Util Var VarEnv VarSet
 
 compiler_stage2_dll0_HS_OBJS = \
     $(patsubst %,compiler/stage2/build/%.$(dyn_osuf),$(subst .,/,$(compiler_stage2_dll0_MODULES)))

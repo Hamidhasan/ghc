@@ -45,7 +45,6 @@ module RdrHsSyn (
         checkValSig,          -- (SrcLoc, HsExp, HsRhs, [HsDecl]) -> P HsDecl
         checkDoAndIfThenElse,
         checkRecordSyntax,
-        parseError,
         parseErrorSDoc,
 
         -- Help with processing exports
@@ -465,10 +464,14 @@ checkTyVars tycl_hdr tparms = do { tvs <- mapM chk tparms
                                  ; return (mkHsQTvs tvs) }
   where
         -- Check that the name space is correct!
+    chk (L l (HsRoleAnnot (L _ (HsKindSig (L _ (HsTyVar tv)) k)) r))
+        | isRdrTyVar tv    = return (L l (HsTyVarBndr tv (Just k) (Just r)))
     chk (L l (HsKindSig (L _ (HsTyVar tv)) k))
-        | isRdrTyVar tv    = return (L l (KindedTyVar tv k))
+        | isRdrTyVar tv    = return (L l (HsTyVarBndr tv (Just k) Nothing))
+    chk (L l (HsRoleAnnot (L _ (HsTyVar tv)) r))
+        | isRdrTyVar tv    = return (L l (HsTyVarBndr tv Nothing (Just r)))
     chk (L l (HsTyVar tv))
-        | isRdrTyVar tv    = return (L l (UserTyVar tv))
+        | isRdrTyVar tv    = return (L l (HsTyVarBndr tv Nothing Nothing))
     chk t@(L l _)
         = parseErrorSDoc l $
           vcat [ sep [ ptext (sLit "Unexpected type") <+> quotes (ppr t)
@@ -970,7 +973,10 @@ mkImport cconv safety (L loc entity, v, ty)
   let funcTarget = CFunction (StaticTarget entity Nothing True)
       importSpec = CImport PrimCallConv safety Nothing funcTarget
   return (ForD (ForeignImport v ty noForeignImportCoercionYet importSpec))
-
+  | cconv == JavaScriptCallConv = do
+  let funcTarget = CFunction (StaticTarget entity Nothing True)
+      importSpec = CImport JavaScriptCallConv safety Nothing funcTarget
+  return (ForD (ForeignImport v ty noForeignImportCoercionYet importSpec))
   | otherwise = do
     case parseCImport cconv safety (mkExtName (unLoc v)) (unpackFS entity) of
       Nothing         -> parseErrorSDoc loc (text "Malformed entity string")
@@ -1083,9 +1089,6 @@ mkTypeImpExp name =
 -- Misc utils
 
 \begin{code}
-parseError :: SrcSpan -> String -> P a
-parseError span s = parseErrorSDoc span (text s)
-
 parseErrorSDoc :: SrcSpan -> SDoc -> P a
 parseErrorSDoc span s = failSpanMsgP span s
 \end{code}

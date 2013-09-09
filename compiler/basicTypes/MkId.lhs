@@ -547,7 +547,7 @@ mkDataConRep dflags fam_envs wrap_name data_con
     initial_wrap_app = Var (dataConWorkId data_con)
                       `mkTyApps`  res_ty_args
     	              `mkVarApps` ex_tvs                 
-    	              `mkCoApps`  map (mkReflCo . snd) eq_spec
+    	              `mkCoApps`  map (mkReflCo Nominal . snd) eq_spec
     	                -- Dont box the eq_spec coercions since they are
     	                -- marked as HsUnpack by mk_dict_strict_mark
 
@@ -695,8 +695,7 @@ dataConArgUnpack arg_ty
     -- An interface file specified Unpacked, but we couldn't unpack it
 
 isUnpackableType :: FamInstEnvs -> Type -> Bool
--- True if we can unpack the UNPACK fields of the constructor
--- without involving the NameSet tycons
+-- True if we can unpack the UNPACK the argument type 
 -- See Note [Recursive unboxing]
 -- We look "deeply" inside rather than relying on the DataCons
 -- we encounter on the way, because otherwise we might well
@@ -730,9 +729,11 @@ isUnpackableType fam_envs ty
          -- NB: dataConStrictMarks gives the *user* request; 
          -- We'd get a black hole if we used dataConRepBangs
 
-    attempt_unpack (HsUnpack {})              = True
-    attempt_unpack (HsUserBang (Just unpk) _) = unpk
-    attempt_unpack _                          = False
+    attempt_unpack (HsUnpack {})                 = True
+    attempt_unpack (HsUserBang (Just unpk) bang) = bang && unpk
+    attempt_unpack (HsUserBang Nothing bang)     = bang  -- Be conservative
+    attempt_unpack HsStrict                      = False
+    attempt_unpack HsNoBang                      = False
 \end{code}
 
 Note [Unpack one-wide fields]
@@ -761,14 +762,26 @@ Here we can represent T with an Int#.
 
 Note [Recursive unboxing]
 ~~~~~~~~~~~~~~~~~~~~~~~~~
-Be careful not to try to unbox this!
-	data T = MkT {-# UNPACK #-} !T Int
-Reason: consider
+Consider
   data R = MkR {-# UNPACK #-} !S Int
   data S = MkS {-# UNPACK #-} !Int
 The representation arguments of MkR are the *representation* arguments
-of S (plus Int); the rep args of MkS are Int#.  This is obviously no
-good for T, because then we'd get an infinite number of arguments.
+of S (plus Int); the rep args of MkS are Int#.  This is all fine.
+
+But be careful not to try to unbox this!
+	data T = MkT {-# UNPACK #-} !T Int
+Because then we'd get an infinite number of arguments.
+
+Here is a more complicated case:
+	data S = MkS {-# UNPACK #-} !T Int
+	data T = MkT {-# UNPACK #-} !S Int
+Each of S and T must decide independendently whether to unpack
+and they had better not both say yes. So they must both say no.
+
+Also behave conservatively when there is no UNPACK pragma
+	data T = MkS !T Int
+with -funbox-strict-fields or -funbox-small-strict-fields
+we need to behave as if there was an UNPACK pragma there.
 
 But it's the *argument* type that matters. This is fine:
 	data S = MkS S !Int
@@ -823,7 +836,7 @@ wrapNewTypeBody tycon args result_expr
     wrapFamInstBody tycon args $
     mkCast result_expr (mkSymCo co)
   where
-    co = mkUnbranchedAxInstCo (newTyConCo tycon) args
+    co = mkUnbranchedAxInstCo Representational (newTyConCo tycon) args
 
 -- When unwrapping, we do *not* apply any family coercion, because this will
 -- be done via a CoPat by the type checker.  We have to do it this way as
@@ -833,7 +846,7 @@ wrapNewTypeBody tycon args result_expr
 unwrapNewTypeBody :: TyCon -> [Type] -> CoreExpr -> CoreExpr
 unwrapNewTypeBody tycon args result_expr
   = ASSERT( isNewTyCon tycon )
-    mkCast result_expr (mkUnbranchedAxInstCo (newTyConCo tycon) args)
+    mkCast result_expr (mkUnbranchedAxInstCo Representational (newTyConCo tycon) args)
 
 -- If the type constructor is a representation type of a data instance, wrap
 -- the expression into a cast adjusting the expression type, which is an
@@ -843,7 +856,7 @@ unwrapNewTypeBody tycon args result_expr
 wrapFamInstBody :: TyCon -> [Type] -> CoreExpr -> CoreExpr
 wrapFamInstBody tycon args body
   | Just co_con <- tyConFamilyCoercion_maybe tycon
-  = mkCast body (mkSymCo (mkUnbranchedAxInstCo co_con args))
+  = mkCast body (mkSymCo (mkUnbranchedAxInstCo Representational co_con args))
   | otherwise
   = body
 
@@ -851,7 +864,7 @@ wrapFamInstBody tycon args body
 -- represented by a `CoAxiom`, and not a `TyCon`
 wrapTypeFamInstBody :: CoAxiom br -> Int -> [Type] -> CoreExpr -> CoreExpr
 wrapTypeFamInstBody axiom ind args body
-  = mkCast body (mkSymCo (mkAxInstCo axiom ind args))
+  = mkCast body (mkSymCo (mkAxInstCo Representational axiom ind args))
 
 wrapTypeUnbranchedFamInstBody :: CoAxiom Unbranched -> [Type] -> CoreExpr -> CoreExpr
 wrapTypeUnbranchedFamInstBody axiom
@@ -860,13 +873,13 @@ wrapTypeUnbranchedFamInstBody axiom
 unwrapFamInstScrut :: TyCon -> [Type] -> CoreExpr -> CoreExpr
 unwrapFamInstScrut tycon args scrut
   | Just co_con <- tyConFamilyCoercion_maybe tycon
-  = mkCast scrut (mkUnbranchedAxInstCo co_con args) -- data instances only
+  = mkCast scrut (mkUnbranchedAxInstCo Representational co_con args) -- data instances only
   | otherwise
   = scrut
 
 unwrapTypeFamInstScrut :: CoAxiom br -> Int -> [Type] -> CoreExpr -> CoreExpr
 unwrapTypeFamInstScrut axiom ind args scrut
-  = mkCast scrut (mkAxInstCo axiom ind args)
+  = mkCast scrut (mkAxInstCo Representational axiom ind args)
 
 unwrapTypeUnbranchedFamInstScrut :: CoAxiom Unbranched -> [Type] -> CoreExpr -> CoreExpr
 unwrapTypeUnbranchedFamInstScrut axiom

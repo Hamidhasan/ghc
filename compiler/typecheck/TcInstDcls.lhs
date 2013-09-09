@@ -19,10 +19,7 @@ module TcInstDcls ( tcInstDecls1, tcInstDecls2 ) where
 
 import HsSyn
 import TcBinds
-import TcTyClsDecls( tcAddImplicits, tcAddTyFamInstCtxt, tcAddDataFamInstCtxt,
-                     tcSynFamInstDecl, 
-                     wrongKindOfFamily, tcFamTyPats, kcDataDefn, dataDeclChecks,
-                     tcConDecls, checkValidTyCon )
+import TcTyClsDecls
 import TcClassDcl( tcClassDecl2, 
                    HsSigFun, lookupHsSig, mkHsSigFun, emptyHsSigs,
                    findMethodBind, instantiateMethod, tcInstanceMethodBody )
@@ -65,6 +62,7 @@ import Id
 import MkId
 import Name
 import NameSet
+import NameEnv
 import Outputable
 import SrcLoc
 import Util
@@ -411,7 +409,7 @@ tcInstDecls1 tycl_decls inst_decls deriv_decls
        -- Remove any handwritten instance of poly-kinded Typeable and warn
        ; dflags <- getDynFlags
        ; when (wopt Opt_WarnTypeableInstances dflags) $
-              mapM_ (addWarnTc . instMsg) typeable_instances
+              mapM_ (failWithTc . instMsg) typeable_instances
 
        -- Check that if the module is compiled with -XSafe, there are no
        -- hand written instances of old Typeable as then unsafe casts could be
@@ -446,7 +444,7 @@ tcInstDecls1 tycl_decls inst_decls deriv_decls
     typInstErr = ptext $ sLit $ "Can't create hand written instances of Typeable in Safe"
                               ++ " Haskell! Can only derive them"
 
-    instMsg i = hang (ptext (sLit $ "Typeable instances can only be derived; ignoring "
+    instMsg i = hang (ptext (sLit $ "Typeable instances can only be derived; replace "
                                  ++ "the following instance:"))
                      2 (pprInstance (iSpec i))
 
@@ -664,7 +662,8 @@ tcDataFamInstDecl mb_clsinfo
        ; checkTc (isAlgTyCon fam_tc) (wrongKindOfFamily fam_tc)
 
          -- Kind check type patterns
-       ; tcFamTyPats (unLoc fam_tc_name) (tyConKind fam_tc) pats (kcDataDefn defn) $ 
+       ; tcFamTyPats (unLoc fam_tc_name) (tyConKind fam_tc) pats
+                     (kcDataDefn (unLoc fam_tc_name) defn) $ 
            \tvs' pats' res_kind -> do
 
        { -- Check that left-hand side contains no type family applications
@@ -686,7 +685,7 @@ tcDataFamInstDecl mb_clsinfo
        ; let orig_res_ty = mkTyConApp fam_tc pats'
 
        ; (rep_tc, fam_inst) <- fixM $ \ ~(rec_rep_tc, _) ->
-           do { data_cons <- tcConDecls new_or_data rec_rep_tc
+           do { data_cons <- tcConDecls new_or_data (unLoc fam_tc_name) rec_rep_tc
                                        (tvs', orig_res_ty) cons
               ; tc_rhs <- case new_or_data of
                      DataType -> return (mkDataTyConRhs data_cons)
@@ -697,7 +696,8 @@ tcDataFamInstDecl mb_clsinfo
                     axiom    = mkSingleCoAxiom axiom_name eta_tvs fam_tc eta_pats 
                                                (mkTyConApp rep_tc (mkTyVarTys eta_tvs))
                     parent   = FamInstTyCon axiom fam_tc pats'
-                    rep_tc   = buildAlgTyCon rep_tc_name tvs' cType stupid_theta tc_rhs 
+                    roles    = map (const Nominal) tvs'
+                    rep_tc   = buildAlgTyCon rep_tc_name tvs' roles cType stupid_theta tc_rhs 
                                              Recursive 
                                              False      -- No promotable to the kind level
                                              h98_syntax parent
@@ -710,7 +710,8 @@ tcDataFamInstDecl mb_clsinfo
               ; return (rep_tc, fam_inst) }
 
          -- Remember to check validity; no recursion to worry about here
-       ; checkValidTyCon rep_tc
+       ; let role_annots = unitNameEnv rep_tc_name (repeat Nothing)
+       ; checkValidTyCon rep_tc role_annots
        ; return fam_inst } }
   where
     -- See Note [Eta reduction for data family axioms]

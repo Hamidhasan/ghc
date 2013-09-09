@@ -81,9 +81,8 @@ import CoreTidy         ( tidyExpr )
 import Type             ( Type )
 import PrelNames
 import {- Kind parts of -} Type         ( Kind )
-import CoreLint         ( lintUnfolding )
+import CoreMonad        ( lintInteractiveExpr )
 import DsMeta           ( templateHaskellNames )
-import VarSet
 import VarEnv           ( emptyTidyEnv )
 import Panic
 
@@ -637,6 +636,7 @@ hscCompileOneShot hsc_env extCore_filename mod_summary src_changed
         compile mb_old_hash reason = runHsc hsc_env' $ do
             liftIO $ msg reason
             tc_result <- genericHscFrontend mod_summary
+            guts0 <- hscDesugar' (ms_location mod_summary) tc_result
             dflags <- getDynFlags
             case hscTarget dflags of
                 HscNothing -> return HscNotGeneratingCode
@@ -647,8 +647,7 @@ hscCompileOneShot hsc_env extCore_filename mod_summary src_changed
                            liftIO $ hscWriteIface dflags iface changed mod_summary
                            return HscUpdateBoot
                     _ ->
-                        do guts0 <- hscDesugar' (ms_location mod_summary) tc_result
-                           guts <- hscSimplify' guts0
+                        do guts <- hscSimplify' guts0
                            (iface, changed, _details, cgguts) <- hscNormalIface' extCore_filename guts mb_old_hash
                            liftIO $ hscWriteIface dflags iface changed mod_summary
                            return $ HscRecomp cgguts mod_summary
@@ -1135,7 +1134,7 @@ hscWriteIface dflags iface no_change mod_summary = do
         -- TODO: Should handle the dynamic hi filename properly
         let dynIfaceFile = replaceExtension ifaceFile (dynHiSuf dflags)
             dynIfaceFile' = addBootSuffix_maybe (mi_boot iface) dynIfaceFile
-            dynDflags = doDynamicToo dflags
+            dynDflags = dynamicTooMkDynamicDynFlags dflags
         writeIfaceFile dynDflags dynIfaceFile' iface
 
 -- | Compile to hard-code.
@@ -1385,12 +1384,12 @@ hscStmtWithLocation hsc_env0 stmt source linenumber =
 
             -- Desugar it
             ds_expr <- ioMsgMaybe $
-                           deSugarExpr hsc_env iNTERACTIVE rdr_env type_env tc_expr
+                       deSugarExpr hsc_env iNTERACTIVE rdr_env type_env tc_expr
+            liftIO (lintInteractiveExpr "desugar expression" hsc_env ds_expr)
             handleWarnings
 
             -- Then code-gen, and link it
-            hsc_env <- getHscEnv
-            hval    <- liftIO $ hscCompileCoreExpr hsc_env src_span ds_expr
+            hval <- liftIO $ hscCompileCoreExpr hsc_env src_span ds_expr
             let hval_io = unsafeCoerce# hval :: IO [HValue]
 
             return $ Just (ids, hval_io, fix_env)
@@ -1618,37 +1617,28 @@ hscCompileCoreExpr hsc_env srcspan ds_expr
     = throwIO (InstallationError "You can't call hscCompileCoreExpr in a profiled compiler")
             -- Otherwise you get a seg-fault when you run it
 
-    | otherwise = do
-        let dflags = hsc_dflags hsc_env
-        let lint_on = gopt Opt_DoCoreLinting dflags
+    | otherwise
+    = do { let dflags = hsc_dflags hsc_env
 
-        {- Simplify it -}
-        simpl_expr <- simplifyExpr dflags ds_expr
+           {- Simplify it -}
+         ; simpl_expr <- simplifyExpr dflags ds_expr
 
-        {- Tidy it (temporary, until coreSat does cloning) -}
-        let tidy_expr = tidyExpr emptyTidyEnv simpl_expr
+           {- Tidy it (temporary, until coreSat does cloning) -}
+         ; let tidy_expr = tidyExpr emptyTidyEnv simpl_expr
 
-        {- Prepare for codegen -}
-        prepd_expr <- corePrepExpr dflags hsc_env tidy_expr
+           {- Prepare for codegen -}
+         ; prepd_expr <- corePrepExpr dflags hsc_env tidy_expr
 
-        {- Lint if necessary -}
-        -- ToDo: improve SrcLoc
-        when lint_on $
-            let ictxt  = hsc_IC hsc_env
-                te     = mkTypeEnvWithImplicits (ic_tythings ictxt ++ map AnId (ic_sys_vars ictxt))
-                tyvars = varSetElems $ tyThingsTyVars $ typeEnvElts $ te
-                vars   = typeEnvIds te
-            in case lintUnfolding noSrcLoc (tyvars ++ vars) prepd_expr of
-                   Just err -> pprPanic "hscCompileCoreExpr" err
-                   Nothing  -> return ()
+           {- Lint if necessary -}
+         ; lintInteractiveExpr "hscCompileExpr" hsc_env prepd_expr 
 
-        {- Convert to BCOs -}
-        bcos <- coreExprToBCOs dflags iNTERACTIVE prepd_expr
+           {- Convert to BCOs -}
+         ; bcos <- coreExprToBCOs dflags iNTERACTIVE prepd_expr
 
-        {- link it -}
-        hval <- linkExpr hsc_env srcspan bcos
+           {- link it -}
+         ; hval <- linkExpr hsc_env srcspan bcos
 
-        return hval
+         ; return hval }
 #endif
 
 

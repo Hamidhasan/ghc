@@ -511,7 +511,7 @@ data ExtensionFlag
    | Opt_PolyKinds                -- Kind polymorphism
    | Opt_DataKinds                -- Datatype promotion
    | Opt_InstanceSigs
-   | Opt_ExplicitTypeApplication  -- Hamidhasan Explicit Type Application
+   | Opt_ExplicitTypeApplication  
 
    | Opt_StandaloneDeriving
    | Opt_DeriveDataTypeable
@@ -2683,7 +2683,7 @@ xFlags = [
   ( "PolyKinds",                        Opt_PolyKinds, nop ),
   ( "DataKinds",                        Opt_DataKinds, nop ),
   ( "InstanceSigs",                     Opt_InstanceSigs, nop ),
-  ( "ExplicitTypeApplication",          Opt_ExplicitTypeApplication, nop ), -- Hamidhasan
+  ( "ExplicitTypeApplication",          Opt_ExplicitTypeApplication, nop ),
   ( "MonoPatBinds",                     Opt_MonoPatBinds,
     \ turn_on -> when turn_on $ deprecate "Experimental feature now removed; has no effect" ),
   ( "ExplicitForAll",                   Opt_ExplicitForAll, nop ),
@@ -2912,7 +2912,7 @@ disableGlasgowExts :: DynP ()
 disableGlasgowExts = do unSetGeneralFlag Opt_PrintExplicitForalls
                         mapM_ unSetExtensionFlag glasgowExtsFlags
 
-glasgowExtsFlags :: [ExtensionFlag] --Hamidhasan - should I add etypes to glasgow exts?
+glasgowExtsFlags :: [ExtensionFlag]
 glasgowExtsFlags = [
              Opt_ForeignFunctionInterface
            , Opt_UnliftedFFITypes

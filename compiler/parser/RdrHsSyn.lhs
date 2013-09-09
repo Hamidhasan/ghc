@@ -533,8 +533,7 @@ checkContext (L l orig_t)
 
 -- We parse patterns as expressions and check for valid patterns below,
 -- converting the expression into a pattern at the same time.
--- Hamidhasan : look here for help maybe?
-  
+
 checkPattern :: SDoc -> LHsExpr RdrName -> P (LPat RdrName)
 checkPattern msg e = checkLPat msg e
 

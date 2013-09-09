@@ -474,46 +474,6 @@ tcInstTyVarX subst tyvar
               new_tv = mkTcTyVar name kind details 
         ; return (extendTvSubst subst tyvar (mkTyVarTy new_tv), new_tv) }
 
--- Hamidhasan 
-{-
-createExplicitSubst :: [HsTypeApp Name] -> [TyVar]  ->                 -- Type Applications, and TyVars
-                       ([HsTypeApp Name], [Either Type TyVar], TvSubst) ->
-                       TcM ([HsTypeApp Name], [Either Type TyVar], TvSubst)
-                       -- returns remaining explicit types, Either etypes OR tyvars, and the tvSubst
-                       -- The "either list" is handled by tcInstTyVarsETypes - this preserves correct wrapping order
-createExplicitSubst [] [] (remEtys, etyORvars, subst) = return (reverse remEtys, reverse etyORvars, subst)
-createExplicitSubst e@((ExplicitTy _ (Just ety)):etys) (tv:tvs) (remEtys, etyORvars, subst) =
-  if (isTypeVar tv) then --if there is a type, we add it to the subst
-    createExplicitSubst etys tvs (remEtys, (Left ety):etyORvars, extendTvSubst subst tv ety)
-  else -- if its a kind variable, leave it alone, and propagate the etype
-    createExplicitSubst e tvs (remEtys, (Right tv):etyORvars, subst)
-
-createExplicitSubst e@((ExplicitTy hsType Nothing):etys) (tv:tvs) (remEtys, etyORvars, subst)
- = -- do { warnTc True $ text "Hamidhasan createExplicitSubst...etys:" <+> ppr e <+> text "tvs:" <+> ppr (tv:tvs) $$
-   --   text "etype kinds:" <+> ppr (map kindofEType e) <+> text "tv kinds:" <+> ppr (map idType (tv:tvs)) $$
-   --   text "is first tv a tyvar?" <+> ppr (isTypeVar tv)
-   do { if (isTypeVar tv) then do --(idType tv) gets the kind of the type variable
-           if (deferKindVariable (tyVarKind tv)) then
-               do { (etype, _) <- tcLHsType hsType
-                  ; createExplicitSubst (etys) (tvs)
-                    (remEtys, (Left etype):etyORvars, extendTvSubst subst tv etype) }
-             else
-               do { etype <- tcCheckLHsType hsType (tyVarKind tv)
-                  ; createExplicitSubst (etys) (tvs)
-                    (remEtys, (Left etype):etyORvars, extendTvSubst subst tv etype) }
-        else
-          createExplicitSubst e tvs (remEtys, ((Right tv):etyORvars), subst) }
-
-createExplicitSubst (Unknown:etys) (tv:tvs) (remEtys, etyORvars, subst) = -- if there is no type - "@_" - we add it to tvs
-  createExplicitSubst etys tvs (remEtys, (Right tv):etyORvars, subst)             -- and we "throw away" the Nothing
-  
-createExplicitSubst [] (tv:tvs) (remEtys, etyORvars, subst) =             -- When we run out of etypes, we add the rest of
-  createExplicitSubst [] tvs (remEtys, (Right tv):etyORvars, subst)       -- the type variables
-  
-createExplicitSubst (ety:etys) [] (remEtys, etyORvars, subst) =
-  createExplicitSubst etys [] (ety:remEtys, etyORvars, subst)
--}
-
 \end{code}
 
 %************************************************************************

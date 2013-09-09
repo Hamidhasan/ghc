@@ -364,7 +364,6 @@ data UserTypeCtxt
 			--	f :: <S> => a -> a
   | DataTyCtxt Name	-- Theta part of a data decl
 			--	data <S> => T a = MkT a
-                        -- Hamidhasan: may need to add one for EType context        
 \end{code}
 
 
@@ -566,7 +565,7 @@ involving Any.  So the conclusion is this: when generalising
 See Trac #1813 for example.
 
 \begin{code}
-exactTyVarsOfType :: Type -> TyVarSet -- Hamidhasan: do I need this fun?
+exactTyVarsOfType :: Type -> TyVarSet
 -- Find the free type variables (of any kind)
 -- but *expand* type synonyms.  See Note [Silly type synonym] above.
 exactTyVarsOfType ty
@@ -803,7 +802,6 @@ tcSplitForAllTys ty = split ty ty []
      split _ (ForAllTy tv ty) tvs = split ty ty (tv:tvs)
      split orig_ty _          tvs = (reverse tvs, orig_ty)
 
--- Hamidhasan look here for some helper functions
 tcIsForAllTy :: Type -> Bool
 tcIsForAllTy ty | Just ty' <- tcView ty = tcIsForAllTy ty'
 tcIsForAllTy (ForAllTy {}) = True

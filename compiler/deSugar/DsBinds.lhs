@@ -701,7 +701,7 @@ as the old one, but with an Internal name and no IdInfo.
 \begin{code}
 dsHsWrapper :: HsWrapper -> CoreExpr -> DsM CoreExpr
 dsHsWrapper WpHole 	      e = return e
-dsHsWrapper (WpTyApp ty)      e = return $ App e (Type ty) --Hamidhasan this is it
+dsHsWrapper (WpTyApp ty)      e = return $ App e (Type ty)
 dsHsWrapper (WpLet ev_binds)  e = do bs <- dsTcEvBinds ev_binds
                                      return (mkCoreLets bs e)
 dsHsWrapper (WpCompose c1 c2) e = dsHsWrapper c1 =<< dsHsWrapper c2 e

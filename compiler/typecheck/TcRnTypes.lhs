@@ -457,11 +457,7 @@ data TcLclEnv           -- Changes as we move inside an expression
 
         tcl_lie  :: TcRef WantedConstraints,    -- Place to accumulate type constraints
         tcl_errs :: TcRef Messages,             -- Place to accumulate errors
-        tcl_etypes :: [Maybe Type]            -- Accumulation of types for explicit application
     }
-
--- Hamidhasan: Perhaps add etypes as part of the local env. then it can
--- be easily threaded through all the necessary funcs
 
 type TcTypeEnv = NameEnv TcTyThing
 data TcIdBinder = TcIdBndr TcId TopLevelFlag

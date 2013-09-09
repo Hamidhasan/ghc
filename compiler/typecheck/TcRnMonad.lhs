@@ -150,8 +150,7 @@ initTc hsc_env hsc_src keep_rn_syntax mod do_this
                 tcl_tidy       = emptyTidyEnv,
                 tcl_tyvars     = tvs_var,
                 tcl_lie        = lie_var,
-                tcl_untch      = noUntouchables,
-                tcl_etypes     = []
+                tcl_untch      = noUntouchables
              } ;
         } ;
 
@@ -1103,47 +1102,6 @@ setLclTypeEnv lcl_env thing_inside
   where
     upd env = env { tcl_env = tcl_env lcl_env,
                     tcl_tyvars = tcl_tyvars lcl_env }
-
--- Hamidhasan: These 3 functions are for setting, getting,
--- and appending type app information
-addLclTypeApp :: Maybe Type -> TcM a -> TcM a
-addLclTypeApp etype thing_inside
-  = updLclEnv upd thing_inside
-  where
-    upd env = env { tcl_etypes = (etype : tcl_etypes env) }
-
-
-setLclTypeApps :: [Maybe Type] -> TcM a -> TcM a
-setLclTypeApps etypes thing_inside
-  = updLclEnv upd thing_inside
-  where
-    upd env = env { tcl_etypes = etypes }
-
--- Note - Setting Explicit Type Application
-{- This is a bit frustrating, but in order to actually uncurry the 
-   explicit type application and add it to the local scope, each type
-   needs to be type checked. The only way to really do this is through
-   the Monad, but we have to check ALL the types in the list, and need
-   to preserve their state. There are several messy ways to do this, 
-   but this simple recursive function should be the best, where it
-   starts with the HsSyn explicit types and then keeps an accumulator of
-   actual types, adding them all to the state at the end of the etypes.
-
-setLclTypeApps :: [LHsExpr Name] -> [Type] -> TcM a -> TcM a
-setLclTypeApps [] etypes thing_inside
-  = updLclEnv upd thing_inside
-  where 
-    upd env = env { tcl_etypes = etypes }
-setLclTypeApps (((L _ (ETypeApp hsType))):hsTypes) etypes thing_inside
-  = do { (etype, _) <- tcLHsType hsType
-       ; setLclTypeApps hsTypes etype:etypes thing_inside }
-setLclTypeApps (expr:_) _ _ = pprPanic $ text "Warning! setLclTypeApps is" <+>
-                       text "being applied to a non-type application " <+>
-                       text "expression, namely," $$ ppr expr
--}                                
-
-getLclTypeApps :: TcM [Maybe Type]
-getLclTypeApps = do {env <- getLclEnv; return (tcl_etypes env)}
 
 traceTcConstraints :: String -> TcM ()
 traceTcConstraints msg

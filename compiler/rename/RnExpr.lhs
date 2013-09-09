@@ -299,7 +299,11 @@ rnExpr (HsMultiIf ty alts)
   = do { (alts', fvs) <- mapFvRn (rnGRHS IfAlt rnLExpr) alts
        ; return (HsMultiIf ty alts', fvs) }
 
-rnExpr e@(ETypeApp (ExplicitTy a a')) --Hamidhasan: check this: changed from legacy HsType code
+-- Technically, the parser doesn't parse an "ETypeApp"
+-- if the extension is turned off. However,
+-- if in the future this would change, it is easily set
+-- up to do so. 
+rnExpr e@(ETypeApp (ExplicitTy a a'))
   = do { etypesOn <- xoptM Opt_ExplicitTypeApplication
        ; if etypesOn
          then (rnLHsType HsTypeCtx a	`thenM` \ (t, fvT) -> 
@@ -340,19 +344,7 @@ rnExpr e@EWildPat      = do { holes <- xoptM Opt_TypeHoles
                                 then return (hsHoleExpr, emptyFVs)
                                 else patSynErr e
                             }
-rnExpr e@(EAsPat {}) = patSynErr e
-{- rnExpr e@(EAsPat fl@(L loc f) el@(L _ etype)) = patSynErr e
-  do { case etype of
-          HsVar id -> pprSorry "encountered HsVar" $ ppr el $$ text "id:" <+> ppr id
-          HsLit _ -> pprSorry "encountered HsLit" $ ppr el
-          HsApp _ _ -> pprSorry "encountered HsApp" $ ppr el
-          HsPar _ -> pprSorry "encountered HsPar" $ ppr el
-          HsUnboundVar _ -> pprSorry "encountered HsUnboundVar" $ ppr el
-          _ -> pprSorry "encountered some other hexpr" $ ppr el
-     ; rnExpr (HsApp (L loc (HsVar f)) el) }
-                              -- Hamidhasan - later, only allow if extension is on
-                              -- similar to above -}
-  
+rnExpr e@(EAsPat {}) = patSynErr e  
 rnExpr e@(EViewPat {}) = patSynErr e
 rnExpr e@(ELazyPat {}) = patSynErr e
 \end{code}

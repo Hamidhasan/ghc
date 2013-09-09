@@ -125,12 +125,9 @@ tcInferRhoNC (L loc expr)
        ; return (L loc expr', rho) }
 
 tcInfExpr :: HsExpr Name -> TcM (HsExpr TcId, TcRhoType)
-tcInfExpr (HsVar f)     = tcInferId f [] -- Hamidhasan added [] for etypes
+tcInfExpr (HsVar f)     = tcInferId f []
 tcInfExpr (HsPar e)     = do { (e', ty) <- tcInferRhoNC e
                              ; return (HsPar e', ty) }
---tcInfExpr (HsApp e1 (L _ (ETypeApp ty))) = do { (ty', _) <- tcLHsType ty 
---                                              ; tcInferApp e1 [] [ty'] }
--- tcInfExpr (HsApp e1 e2@(L _ (ETypeApp _))) = tcInferApp e1 [] [e2]
 tcInfExpr (HsApp e1 e2) = tcInferApp e1 [e2]                                 
 
 tcInfExpr e             = tcInfer (tcExpr e)
@@ -160,10 +157,6 @@ tcExpr e res_ty | debugIsOn && isSigmaTy res_ty     -- Sanity check
 
 tcExpr (HsVar name)  res_ty = tcCheckId name res_ty
                  
--- If we see an exp. type app as the first argument, put it in the other list
---tcExpr (HsApp e1 (L _ (ETypeApp ty))) res_ty = do { (ty', _) <- tcLHsType ty 
---                                                  ; tcApp e1 [] [ty'] res_ty }
--- tcExpr (HsApp e1 e2@(L _ (ETypeApp _))) res_ty = tcApp e1 [] [e2] res_ty
 tcExpr (HsApp e1 e2) res_ty = tcApp e1 [e2] res_ty
 
 tcExpr (HsLit lit)   res_ty = do { let lit_ty = hsLitType lit
@@ -236,18 +229,14 @@ tcExpr (ExprWithTySig expr sig_ty) res_ty
 
       ; let inner_expr = ExprWithTySigOut (mkLHsWrap gen_fn expr') sig_ty
 
-      ; (inst_wrap, rho) <- deeplyInstantiate ExprSigOrigin sig_tc_ty -- Hamidhasan edited deeplyInstantiate
+      ; (inst_wrap, rho) <- deeplyInstantiate ExprSigOrigin sig_tc_ty
       ; tcWrapResult (mkHsWrap inst_wrap inner_expr) rho res_ty }
 
+-- Does not make sense to have a toplevel type application
+-- Fails with an appropriate error message.
 tcExpr e@(ETypeApp _) _
   = failWithTc (text "Type argument" <+> ppr e <+>
                 text  "must be within function application.")
-        -- This is the syntax for type applications that I was planning
-	-- but there are difficulties (e.g. what order for type args)
-	-- so it's not enabled yet.
-	-- Can't eliminate it altogether from the parser, because the
-	-- same parser parses *patterns*.
-        -- Hamidhasan: Have no fear, kindred spirit, I will implement it for you.
 
 tcExpr (HsUnboundVar v) res_ty
   = tcHole (rdrNameOcc v) res_ty
@@ -350,10 +339,9 @@ tcExpr (OpApp arg1 op fix arg2) res_ty
                op' fix
                (mkLHsWrapCo co_a arg2') }
 
-  | otherwise             -- Hamidhasan TODO: Several infix and other, nonstandard function
-                          -- application defined here. May need to edit these later
+  | otherwise
   = do { traceTc "Non Application rule" (ppr op)
-       ; (op', op_ty) <- tcInferFun op [] -- Hamidhasan added [] for etypes
+       ; (op', op_ty) <- tcInferFun op []
        ; (co_fn, arg_tys, op_res_ty) <- unifyOpFunTysWrap op 2 op_ty
        ; co_res <- unifyType op_res_ty res_ty
        ; [arg1', arg2'] <- tcArgs op [arg1, arg2] arg_tys
@@ -364,7 +352,7 @@ tcExpr (OpApp arg1 op fix arg2) res_ty
 --      \ x -> op x expr
 
 tcExpr (SectionR op arg2) res_ty
-  = do { (op', op_ty) <- tcInferFun op [] -- Hamidhasan added [] for etypes
+  = do { (op', op_ty) <- tcInferFun op []
        ; (co_fn, [arg1_ty, arg2_ty], op_res_ty) <- unifyOpFunTysWrap op 2 op_ty
        ; co_res <- unifyType (mkFunTy arg1_ty op_res_ty) res_ty
        ; arg2' <- tcArg op (arg2, arg2_ty, 2)
@@ -372,7 +360,7 @@ tcExpr (SectionR op arg2) res_ty
          SectionR (mkLHsWrapCo co_fn op') arg2' }
 
 tcExpr (SectionL arg1 op) res_ty
-  = do { (op', op_ty) <- tcInferFun op [] --Hamidhasan added [] for etypes
+  = do { (op', op_ty) <- tcInferFun op []
        ; dflags <- getDynFlags      -- Note [Left sections]
        ; let n_reqd_args | xopt Opt_PostfixOperators dflags = 1
                          | otherwise                        = 2
@@ -525,7 +513,7 @@ tcExpr (RecordCon (L loc con_name) _ rbinds) res_ty
         -- Check for missing fields
         ; checkMissingFields data_con rbinds
 
-        ; (con_expr, con_tau) <- tcInferId con_name [] -- Hamidhasan added [] for etypes
+        ; (con_expr, con_tau) <- tcInferId con_name []
         ; let arity = dataConSourceArity data_con
               (arg_tys, actual_res_ty) = tcSplitFunTysN con_tau arity
               con_id = dataConWrapId data_con
@@ -892,7 +880,7 @@ arithSeqEltType (Just fl) res_ty
 %*                                                                      *
 %************************************************************************
 
-Note [Threading Explicit Type Application]
+Note [Threading Explicit Type Application] Hamidhasan this needs to be updated
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 In order for explicit types to be available to the function's application, but
 _not_ the [first-class function] arguments to the function being applied, 
@@ -903,137 +891,6 @@ This is done through recursion, similar to the way the function's arguments
 are currently handled.
 
 \begin{code}
-  
-{-
-tcApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
-      -> TcRhoType -> TcM (HsExpr TcId) -- Translated fun and args
-
-tcApp (L _ (HsPar e)) args res_ty
-  = tcApp e args res_ty
-
-tcApp (L _ (HsApp e1 (L _ (ETypeApp hs_etype)))) args res_ty
-  = do  { (etype, _) <- tcLHsType hs_etype
-        ; addLclTypeApp etype (tcApp e1 args res_ty) }        
-                                -- Todo: do something with the
-                                -- ETypeApp arguments
-
-
-tcApp (L _ (HsApp e1 e2)) args res_ty
-  = tcApp e1 (e2:args) res_ty	-- Accumulate the arguments
-                                -- This is where they accumulate
-                                -- all of the arguments. Here is where I can
-                                -- look specifically for &Type
-
-tcApp (L loc (HsVar fun)) args res_ty
-  | fun `hasKey` tagToEnumKey
-  , [arg] <- args
-  = tcTagToEnum loc fun arg res_ty
-
-  | fun `hasKey` seqIdKey
-  , [arg1,arg2] <- args
-  = tcSeq loc fun arg1 arg2 res_ty
-
-tcApp fun args res_ty
-  = do	{   -- Type-check the function
-	; (fun1, fun_tau) <- tcInferFun fun  --Hamidhasan: type app needs to be after this line
-
-	    -- Extract its argument types
-	; (co_fun, expected_arg_tys, actual_res_ty)
-	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau         
-
-        -- Typecheck the result, thereby propagating
-        -- info (if any) from result into the argument types
-        -- Both actual_res_ty and res_ty are deeply skolemised
-        ; co_res <- addErrCtxtM (funResCtxt True (unLoc fun) actual_res_ty res_ty) $
-                    unifyType actual_res_ty res_ty
-
-        -- Typecheck the arguments
-        ; args1 <- tcArgs fun args expected_arg_tys
-
-        -- Assemble the result
-        ; let fun2 = mkLHsWrapCo co_fun fun1
-              app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 args1)
-
-        ; return (unLoc app) }
--}
-
-{- Hamidhasan old
-tcApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
-      -> [LHsExpr Name]                 -- Explicit type args
-      -> TcRhoType -> TcM (HsExpr TcId) -- Translated fun and args
-
-tcApp (L _ (HsPar e)) args etypes res_ty
-  = tcApp e args etypes res_ty
-
-tcApp (L _ (HsApp e1 e2@(L _ (ETypeApp _)))) args etypes res_ty
-  = tcAppETypes e1 args (e2:etypes) res_ty
-tcApp (L _ (HsApp e1 e2)) args etypes res_ty
-  = tcApp e1 (e2:args) etypes res_ty	-- Accumulate the arguments
-                                -- Hamidhasan: This is where they accumulate
-                                -- all of the arguments. Here is where I can
-                                -- look specifically for &Type
-
-tcApp (L loc (HsVar fun)) args _ res_ty
-  | fun `hasKey` tagToEnumKey
-  , [arg] <- args
-  = tcTagToEnum loc fun arg res_ty
-
-  | fun `hasKey` seqIdKey
-  , [arg1,arg2] <- args
-  = tcSeq loc fun arg1 arg2 res_ty
-
-tcApp fun args etypes res_ty
-  = do	{   -- Type-check the function
-	; (fun1, fun_tau) <- tcInferFun fun (map unwrap_type_app etypes) 
-
-            -- Extract its argument types
-	; (co_fun, expected_arg_tys, actual_res_ty)
-	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau         
-
-	-- Typecheck the result, thereby propagating 
-        -- info (if any) from result into the argument types
-        -- Both actual_res_ty and res_ty are deeply skolemised
-        ; co_res <- addErrCtxtM (funResCtxt True (unLoc fun) actual_res_ty res_ty) $
-                    unifyType actual_res_ty res_ty
-                    
-	-- Typecheck the arguments
-	; args1 <- tcArgs fun args expected_arg_tys
-
-        -- Assemble the result
-
-        -- Hamidhasan TODO: Make sure the resulting "app" has the explicit types
-        -- this way, it can be used to generate Core correctly; currently,
-        -- the explicit type apps are being "consumed" here and do not show up in DeSugarer
-                   
-        -- I don't think I actually need an ID for etypeids. Since the type constructor I am using
-        -- is actually existential and doesn't have one
-        --; etypeIds <- newSysLocalIds (fsLit "ety@") etypesTc
-        
-        -- Need to make the ETypes from LHsExpr Name -> LHsExpr TcId
-        -- Note that this will modify the order of how the explicit types came in.
-        -- for example: f &Int x &Bool y will become
-        --              f &Int &Bool x y
-	
-        ; let fun2 = mkLHsWrapCo co_fun fun1
-              --etypeArgs = zipWith tcTypeApp etypes etypesTc
-              --etypeWrap = mkWpTyApps etypesTc
-              app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 args1)
-  {- Hamidhasan
-        ; if length etypes /= 0 then
-             warnTc True $ text "Hamidhasan: App. Info: etypes: " <> ppr etypes <> 
-                      text " expected_arg_tys: " <> ppr expected_arg_tys $$
-                      text " co_fun: " <> ppr co_fun <>
-                      text ", funtau: " <> ppr fun_tau $$
-                      text " actual_res_ty:" <+> ppr actual_res_ty <>
-                      text " co_res: " <+> ppr co_res $$
-                      text " args1:" <+> ppr args1 <>
-                      text ", fun2:" <+> ppr fun2 <>
-                      text ", app:" <+> ppr app
-          else return () 
-  -}
-        ; return (unLoc app) }
--}
-
 tcApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
       -> TcRhoType -> TcM (HsExpr TcId) -- Translated fun and args
 
@@ -1042,9 +899,6 @@ tcApp (L _ (HsPar e)) args res_ty
 
 tcApp (L _ (HsApp e1 e2)) args res_ty
   = tcApp e1 (e2:args) res_ty	-- Accumulate the arguments
-                                -- Hamidhasan: This is where they accumulate
-                                -- all of the arguments. Here is where I can
-                                -- look specifically for &Type
 
 tcApp (L loc (HsVar fun)) args res_ty
   | fun `hasKey` tagToEnumKey
@@ -1057,8 +911,10 @@ tcApp (L loc (HsVar fun)) args res_ty
 
 tcApp fun argsANDetys res_ty
   = do	{   -- Type-check the function
-	; (fun1, fun_tau) <- tcInferFun fun argsANDetys -- pass args for etypes 
+	; (fun1, fun_tau) <- tcInferFun fun argsANDetys
+            -- Explicit Types have been used up - throw them away
         ; let args = filter (not . isEType) argsANDetys
+              
             -- Extract its argument types
 	; (co_fun, expected_arg_tys, actual_res_ty)
 	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau         
@@ -1073,37 +929,9 @@ tcApp fun argsANDetys res_ty
 	; args1 <- tcArgs fun args expected_arg_tys
 
         -- Assemble the result
-
-        -- Hamidhasan TODO: Make sure the resulting "app" has the explicit types
-        -- this way, it can be used to generate Core correctly; currently,
-        -- the explicit type apps are being "consumed" here and do not show up in DeSugarer
-                   
-        -- I don't think I actually need an ID for etypeids. Since the type constructor I am using
-        -- is actually existential and doesn't have one
-        --; etypeIds <- newSysLocalIds (fsLit "ety@") etypesTc
-        
-        -- Need to make the ETypes from LHsExpr Name -> LHsExpr TcId
-        -- Note that this will modify the order of how the explicit types came in.
-        -- for example: f &Int x &Bool y will become
-        --              f &Int &Bool x y
-	
         ; let fun2 = mkLHsWrapCo co_fun fun1
-              --etypeArgs = zipWith tcTypeApp etypes etypesTc
-              --etypeWrap = mkWpTyApps etypesTc
               app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 args1)
-  {- Hamidhasan
-        ; if length etypes /= 0 then
-             warnTc True $ text "Hamidhasan: App. Info: etypes: " <> ppr etypes <> 
-                      text " expected_arg_tys: " <> ppr expected_arg_tys $$
-                      text " co_fun: " <> ppr co_fun <>
-                      text ", funtau: " <> ppr fun_tau $$
-                      text " actual_res_ty:" <+> ppr actual_res_ty <>
-                      text " co_res: " <+> ppr co_res $$
-                      text " args1:" <+> ppr args1 <>
-                      text ", fun2:" <+> ppr fun2 <>
-                      text ", app:" <+> ppr app
-          else return () 
- -}  
+
         ; return (unLoc app) }
 
 mk_app_msg :: LHsExpr Name -> SDoc
@@ -1111,53 +939,6 @@ mk_app_msg fun = sep [ ptext (sLit "The function") <+> quotes (ppr fun)
                      , ptext (sLit "is applied to")]
 
 ----------------
-{-
-tcInferApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
-           -> TcM (HsExpr TcId, TcRhoType) -- Translated fun and args
-
-tcInferApp (L _ (HsPar e))     args = tcInferApp e args
-tcInferApp (L _ (HsApp e1 e2)) args = tcInferApp e1 (e2:args)
-tcInferApp fun args
-  = -- Very like the tcApp version, except that there is
-    -- no expected result type passed in
-    do	{ (fun1, fun_tau) <- tcInferFun fun
-	; (co_fun, expected_arg_tys, actual_res_ty) --Hamidhasan: typeapp needs to be here
-	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
-	; args1 <- tcArgs fun args expected_arg_tys
-	; let fun2 = mkLHsWrapCo co_fun fun1
-              app  = foldl mkHsApp fun2 args1
-        ; return (unLoc app, actual_res_ty) }
-
-tcInferApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
-           -> [LHsExpr Name]
-           -> TcM (HsExpr TcId, TcRhoType) -- Translated fun and args
-
-tcInferApp (L _ (HsPar e)) args etypes = tcInferApp e args etypes
-tcInferApp (L _ (HsApp e1 e2@(L _ (ETypeApp _)))) args etypes = 
-    tcInferApp e1 args (e2:etypes)
-tcInferApp (L _ (HsApp e1 e2)) args etypes = tcInferApp e1 (e2:args) etypes
-tcInferApp fun args etypes
-  = -- Very like the tcApp version, except that there is
-    -- no expected result type passed in
-    do	{ (fun1, fun_tau) <- tcInferFun fun (map unwrap_type_app etypes)
-	; (co_fun, expected_arg_tys, actual_res_ty) --Hamidhasan: typeapp needs to be here
-	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
-	; args1 <- tcArgs fun args expected_arg_tys
-	; let fun2 = mkLHsWrapCo co_fun fun1
-              app  = foldl mkHsApp fun2 args1
- {-       ; if length etypes /= 0 then
-             warnTc True $ text "Hamidhasan: InferApp. Info: etypes: " <> ppr etypes <> 
-                      text " expected_arg_tys: " <> ppr expected_arg_tys $$
-                      text " co_fun: " <> ppr co_fun <>
-                      text " actual_res_ty:" <+> ppr actual_res_ty $$
-                      text " args1:" <+> ppr args1 <>
-                      text ", fun2:" <+> ppr fun2 <>
-                      text ", app:" <+> ppr app 
-          else return ()  -}
-      
-        ; return (unLoc app, actual_res_ty) }
--}
-
 tcInferApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
            -> TcM (HsExpr TcId, TcRhoType) -- Translated fun and args
 
@@ -1168,68 +949,33 @@ tcInferApp fun argsANDetys
     -- no expected result type passed in
     do	{ (fun1, fun_tau) <- tcInferFun fun argsANDetys
         ; let args = filter (not . isEType) argsANDetys
-	; (co_fun, expected_arg_tys, actual_res_ty) --Hamidhasan: typeapp needs to be here
+	; (co_fun, expected_arg_tys, actual_res_ty)
 	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
 	; args1 <- tcArgs fun args expected_arg_tys
 	; let fun2 = mkLHsWrapCo co_fun fun1
               app  = foldl mkHsApp fun2 args1
- {-       ; if length etypes /= 0 then
-             warnTc True $ text "Hamidhasan: InferApp. Info: etypes: " <> ppr etypes <> 
-                      text " expected_arg_tys: " <> ppr expected_arg_tys $$
-                      text " co_fun: " <> ppr co_fun <>
-                      text " actual_res_ty:" <+> ppr actual_res_ty $$
-                      text " args1:" <+> ppr args1 <>
-                      text ", fun2:" <+> ppr fun2 <>
-                      text ", app:" <+> ppr app 
-          else return ()  -}
-      
         ; return (unLoc app, actual_res_ty) }
 
 
----------------- Hamidhasan: look at funs above and below
-
-{-
-tcInferFun :: LHsExpr Name -> TcM (LHsExpr TcId, TcRhoType)
--- Infer and instantiate the type of a function
-tcInferFun (L loc (HsVar name))
-  = do { (fun, ty) <- setSrcSpan loc (tcInferId name)
-       	       -- Don't wrap a context around a plain Id
-       ; return (L loc fun, ty) }
-
-tcInferFun fun
-  = do { (fun, fun_ty) <- tcInfer (tcMonoExpr fun)
-
-         -- Zonk the function type carefully, to expose any polymorphism
-         -- E.g. (( \(x::forall a. a->a). blah ) e)
-         -- We can see the rank-2 type of the lambda in time to genrealise e
-       ; fun_ty' <- zonkTcType fun_ty
-
-       ; (wrap, rho) <- deeplyInstantiate AppOrigin fun_ty' -- Hamidhasan
-       ; return (mkLHsWrap wrap fun, rho) }
--}
-
--- New tcInferFun for explicit type application.
 tcInferFun :: LHsExpr Name -> [LHsExpr Name] -> TcM (LHsExpr TcId, TcRhoType)
 -- Infer and instantiate the type of a function
-tcInferFun (L loc (HsVar name)) etypes
-  = do { (fun, ty) <- setSrcSpan loc (tcInferId name etypes)       -- Don't wrap a context around a plain Id
-        -- Somewhere where the function is looked up, the kind is also returned
-        -- You need to get this kind and then make it the "expected kind" Hamidhasan
-                      
+tcInferFun (L loc (HsVar name)) etypes_and_args
+  = do { (fun, ty) <- setSrcSpan loc (tcInferId name etypes_and_args)       -- Don't wrap a context around a plain Id
        ; return (L loc fun, ty) }
 
-tcInferFun fun etypes
-  = do { (fun, fun_ty) <- tcInfer (tcMonoExpr fun) -- Hamidhasan do we need to do any type app stuff here? checkedETypes
+tcInferFun fun etypes_and_args
+  = do { (fun, fun_ty) <- tcInfer (tcMonoExpr fun)
 
          -- Zonk the function type carefully, to expose any polymorphism
 	 -- E.g. (( \(x::forall a. a->a). blah ) e)
 	 -- We can see the rank-2 type of the lambda in time to genrealise e
        ; fun_ty' <- zonkTcType fun_ty
 
-       ; (wrap, rho, remainingETypes) <- deeplyInstantiateApp AppOrigin etypes fun_ty' -- Hamidhasan added [] for type apps 
-       ; if (not (null remainingETypes)) then   --If there are any remaining explicit types even after
-           let len = length etypes in           --deep instantiation, then warn the programmer
-           addErrTc $                   
+       ; (wrap, rho, remainingETypes) <- deeplyInstantiateApp AppOrigin etypes_and_args fun_ty'
+       ; if (not (null remainingETypes)
+            && (any isEType remainingETypes)) then
+           let len = length etypes in   -- If there are any remaining explicit types even after          
+           addErrTc $                   -- deep instantiation, then warn the programmer
            text "Provided" <+> speakNOf len (text "explicit type") <> char ',' $$
            text "but the function" <+> ppr fun <+> text "had fewer type variables." $$
            text "The following type" <> (if len > 1 then text "s were" else text " was") <+>
@@ -1237,10 +983,7 @@ tcInferFun fun etypes
          else return ()
 
        ; return (mkLHsWrap wrap fun, rho) }
-    
-unwrap_type_app :: LHsExpr Name -> HsTypeApp Name
-unwrap_type_app (L _ (ETypeApp ty)) = ty
-unwrap_type_app _ = panic "unwrap_type_app: applied to an invalid expression"
+
 ----------------
 tcArgs :: LHsExpr Name                          -- The function (for error messages)
        -> [LHsExpr Name] -> [TcSigmaType]       -- Actual arguments and expected arg types
@@ -1256,7 +999,6 @@ tcArg :: LHsExpr Name                           -- The function (for error messa
 tcArg fun (arg, ty, arg_no) = addErrCtxt (funAppCtxt fun arg arg_no)
                                          (tcPolyExprNC arg ty)
 
-
 ----------------
 tcTupArgs :: [HsTupArg Name] -> [TcSigmaType] -> TcM [HsTupArg TcId]
 tcTupArgs args tys
@@ -1267,42 +1009,9 @@ tcTupArgs args tys
                                    ; return (Present expr') }
 
 ----------------
-{-
-checkLclTypeApps :: [LHsExpr Name] -> [Maybe Type] -> TcM a -> TcM a
-checkLclTypeApps [] etypes thing_inside -- See Note [Set Local Type Applications]
-  = updLclEnv upd thing_inside
-  where 
-    upd env = env { tcl_etypes = reverse etypes }
-
-checkLclTypeApps (((L _ (ETypeApp (Just hsType)))):hsTypes) etypes thing_inside
-  = do { (etype, _) <- tcLHsType hsType
-       ; checkLclTypeApps hsTypes ((Just etype):etypes) thing_inside }
-    
-checkLclTypeApps (((L _ (ETypeApp Nothing))):hsTypes) etypes thing_inside
-  = checkLclTypeApps hsTypes (Nothing:etypes) thing_inside
-
-checkLclTypeApps (expr:_) _ _ = pprPanic "checkLclTypeApps" $ 
-                       text "Warning! checkLclTypeApps is" <+>
-                       text "being applied to a non-type application" <+>
-                       text "expression, namely," $$ ppr expr
--}
-
-
 isEType :: LHsExpr Name -> Bool
 isEType (L _ (ETypeApp _)) = True 
 isEType _ = False
-
-kindofEType :: HsTypeApp Name -> Maybe Kind
-kindofEType (ExplicitTy _ (Just ty)) = Just $ typeKind ty
-kindofEType (ExplicitTy _ Nothing) = Nothing
-kindofEType Unknown = Nothing
--- Hamidhasan this is such a shameless hack...argh
---tcTypeApp :: LHsExpr Name -> Type -> LHsExpr TcId
---tcTypeApp (L loc (ETypeApp _)) ty
---  = (L loc (ETypeApp (L loc (HsCoreTy ty))))
---tcTypeApp _ _ = pprPanic "tcTypeApp" $ text "tcTypeApp applied to an expression other than" <+>
---                                       text "an explicit type application"
-         
 
 ----------------
 unifyOpFunTysWrap :: LHsExpr Name -> Arity -> TcRhoType
@@ -1317,20 +1026,10 @@ tcSyntaxOp :: CtOrigin -> HsExpr Name -> TcType -> TcM (HsExpr TcId)
 -- Typecheck a syntax operator, checking that it has the specified type
 -- The operator is always a variable at this stage (i.e. renamer output)
 -- This version assumes res_ty is a monotype
-tcSyntaxOp orig (HsVar op) res_ty = do { (expr, rho) <- tcInferIdWithOrig orig op [] -- Hamidhasan added [] for type app
+tcSyntaxOp orig (HsVar op) res_ty = do { (expr, rho) <- tcInferIdWithOrig orig op []
                                        ; tcWrapResult expr rho res_ty }
 tcSyntaxOp _ other         _      = pprPanic "tcSyntaxOp" (ppr other)
 \end{code}
-
-Note [Set Local Type Applications]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-This function sets the explicit type application in the local
-environment and checks each type in the process, to see if the type
-is well-formed itself.
-
-However, since it modifies the environment, one could argue it should be in
-TcRnMonad.lhs, but there, "tcLHsType" is not defined (since TcType.lhs
-is not imported in TcRnMonad.lhs).
 
 Note [Push result type in]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1366,7 +1065,7 @@ in the other order, the extra signature in f2 is reqd.
 \begin{code}
 tcCheckId :: Name -> TcRhoType -> TcM (HsExpr TcId)
 tcCheckId name res_ty
-  = do { (expr, actual_res_ty) <- tcInferId name [] -- Hamidhasan added [] for ETypes
+  = do { (expr, actual_res_ty) <- tcInferId name [] -- Hamidhasan check
        ; addErrCtxtM (funResCtxt False (HsVar name) actual_res_ty res_ty) $
          tcWrapResult expr actual_res_ty res_ty }
 
@@ -1381,19 +1080,15 @@ tcInferIdWithOrig :: CtOrigin -> Name -> [LHsExpr Name] -> TcM (HsExpr TcId, TcR
 tcInferIdWithOrig orig id_name etypes
   = do { id <- lookup_id
        ; (id_expr, id_rho, etypes') <- instantiateOuter orig id etypes
-       ; (wrap, rho, remainingETypes) <- deeplyInstantiateApp orig etypes' id_rho -- here we go Hamidhasan
-       ; 
-       ;  if (not (null remainingETypes) && (any isEType remainingETypes)) then   --If there are any remaining explicit types even after
-           let len = length remainingETypes in           --deep instantiation, then warn the programmer
-           addErrTc $                   
+       ; (wrap, rho, remainingETypes) <- deeplyInstantiateApp orig etypes' id_rho
+       ;  if (not (null remainingETypes) && (any isEType remainingETypes)) then
+           let len = length remainingETypes in -- If there are any remaining explicit types even after          
+           addErrTc $                          -- deep instantiation, then warn the programmer
            text "Provided" <+> speakNOf len (text "extra explicit type") <> char ',' <+>
            text "which the function" $$ (quotes $ ppr id) <+> text "could not use for substitution." $$
            text "The following type argument" <> (if len > 1 then text "s were" else text " was") $$
            text "not applied:" <+> ppr remainingETypes
          else return ()
-       ; if (null etypes) then return ()
-         else warnTc True $ text "tcInferIdWithOrig...id_expr:" <+> ppr id_expr <+> text "id_rho:" <+> ppr id_rho
-              $$ text "wrap:" <+> ppr wrap <+> text "rho:" <+> ppr rho <+> text "remainingETypes:" <+> ppr remainingETypes
        ; return (mkHsWrap wrap id_expr, rho) }
   where
     lookup_id :: TcM TcId
@@ -1432,74 +1127,26 @@ instantiateOuter :: CtOrigin -> TcId -> [LHsExpr Name] -> TcM (HsExpr TcId, TcSi
 instantiateOuter orig id etypes
   | null tvs && null theta
   = return (HsVar id, tau, etypes)
-{-  = do { etypes <- getLclTypeApps
-       ; if (not $ null etypes) then
-           warnTc True $ text "Provided" <+> speakNOf (length etypes) (text "type") <>
-                 char ',' $$ text "but the function" <+> ppr id <+> text "has" <+> speakNOf (length tvs)
-                 (text "type variable") $$ text "Hamidhasan: debug info: id: " <> ppr id <> text " tvs: " <>
-                 ppr tvs $$ text " theta: " <> ppr theta <> text " tau: " <> ppr tau <+> text "etypes" <+> ppr etypes
-         else return ()
-       ; return (HsVar id, tau, []) }
--}
 
   | otherwise
-  = do -- {etypes <- getLclTypeApps -- See Note [Explicit Type Application] consulting
-                                  -- this and other lines containing "etypeSomething"
-   {-    ; if (length etypes > length tvs) then
-           warnTc True $ text "Provided" <+> speakNOf (length etypes) (text "type") <>
-                 char ',' $$ text "but the function" <+> ppr id <+> text "has" <+> speakNOf (length tvs)
-                 (text "type variable") $$ text "Hamidhasan: debug info: id: " <> ppr id <> text " tvs: " <>
-                 ppr tvs $$ text " theta: " <> ppr theta <> text " tau: " <> ppr tau
-         else return ()
-   
-       ; (remainingETypes, tvs', etypeSubst) <- return $ createExplicitSubst etypes tvs ([], [], emptyTvSubst)
-                           -- Check for explicit type application
-                                                
-       ; (_, tys, subst) <- tcInstTyVarsETypes tvs' -- See Note [Instantiating TyVars with Explicit Types]
-       ; doStupidChecks id tys
-      -- Union with the explicitTypeSubst. 
-       ; subst' <- return (etypeSubst `unionTvSubst` subst)
-   -}    
-       { (tys, subst, remainingETypes) <- 
+  = do { (tys, subst, remainingETypes) <- 
          if (null etypes) then
             do { (_, tys, subst) <- tcInstTyVars tvs
               ; doStupidChecks id tys
               ; return (tys, subst, []) }
-            
          else
            do { (_, tys, subst, remETypes) <- tcInstTyVarsETypes tvs etypes
               ; doStupidChecks id tys
               ; return (tys, subst, remETypes) }
-                                            
        ; let theta' = substTheta subst theta
        ; traceTc "Instantiating" (ppr id <+> text "with" <+> (ppr tys $$ ppr theta'))
-
-      {- ; case (etypeSubst, subst) of
-         (TvSubst _ etenv, TvSubst _ tenv) -> 
-           if (tenv `intersectsVarEnv` etenv) then warnTc True $ 
-           text "Type environments are not disjoint: " <> ppr tenv $$ ppr etenv else return () -}
-
        ; wrap <- instCall orig tys theta'
-       ; if (null etypes) then return () else -- Hamidhasan
-         warnTc True $ text "instantiateOuter: id: " <> ppr id <> text " tvs: " <> ppr tvs $$
-                       text " theta: " <> ppr theta <> text " tau: " <> ppr tau $$
-                       text " etypes: " <> ppr etypes <> text " tys: " <> ppr tys $$
-                       text " theta': " <> ppr theta' $$
-                       text " subst: " <> ppr subst $$
-                       text " wrap:" <+> ppr wrap $$
-                       text "idType:" <+> ppr (idType id) $$
-                       text "idKind:" <+> ppr (typeKind $ idType id) $$
-                       text "idtype of tvs" <+> ppr (map idType tvs) $$
-                       text "kind of tvs" <+> ppr (map typeKind (map idType tvs)) $$
-                       text "tyVarKind of tvs" <+> ppr (map tyVarKind tvs)
-                       
        ; return (mkHsWrap wrap (HsVar id), TcType.substTy subst tau, remainingETypes) }
   where
     (tvs, theta, tau) = tcSplitSigmaTy (idType id)
 
--- Hamidhasan
 -- In order for explicit type applications to work nicely, a version of deeplyInstantiate
--- is included here.
+-- is included here. Many of these are dependency issues.
 deeplyInstantiateApp :: CtOrigin -> [LHsExpr Name] -> TcSigmaType -> TcM (HsWrapper, TcRhoType, [LHsExpr Name])
 deeplyInstantiateApp orig etypes ty
   | Just (arg_tys, tvs, theta, rho) <- tcDeepSplitSigmaTy_maybe ty
@@ -1510,21 +1157,8 @@ deeplyInstantiateApp orig etypes ty
            else
              do { (_, tys, subst, remETypes) <- tcInstTyVarsETypes tvs etypes
                 ; return (tys, subst, remETypes) }
-             
        ; ids1  <- newSysLocalIds (fsLit "di") (substTys subst arg_tys)
        ; wrap1 <- instCall orig tys (substTheta subst theta)
-       ; warnTc True $ text "Deeply instantiate...ty:"<+> ppr ty $$ text "arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+>
-         ppr tvs $$ text "theta:" <+> ppr theta <+> text "rho:" <+> ppr rho $$ text "tys:" <+>
-         ppr tys <+> text "subst:" <+> ppr subst $$ text "ids1:" <+> ppr ids1 <+> text "wrap1:"
-         <+> ppr wrap1 $$ text "etypes:" <+> ppr etypes
-         <+> text "remaining etypes:" <+> ppr remainingETypes
-     {-  ; if (not $ null etypes) then pprSorry "deeplyInstantiate" $
-                                     text "Deeply instantiate...arg_tys:"<+> ppr arg_tys <+> text "tvs:" <+>
-         ppr tvs $$ text "theta:" <+> ppr theta <+> text "rho:" <+> ppr rho $$ text "tys:" <+>
-         ppr tys <+> text "subst:" <+> ppr subst $$ text "ids1:" <+> ppr ids1 <+> text "wrap1:" <+> text "subst':" <+> ppr subst'
-         <+> ppr wrap1 $$ text "etypes:" <+> ppr etypes
-         else return () -}
-              
        ; (wrap2, rho2, leftOverETypes) <- deeplyInstantiateApp orig remainingETypes (substTy subst rho)
        ; return (mkWpLams ids1 
                     <.> wrap2
@@ -1535,81 +1169,6 @@ deeplyInstantiateApp orig etypes ty
                  leftOverETypes) } 
 
   | otherwise = return (idHsWrapper, ty, etypes)
-
--- Hamidhasan
-{-
-createExplicitSubst :: [HsTypeApp Name] -> [TyVar]  ->                 -- Type Applications, and TyVars
-                       ([HsTypeApp Name], [Either Type TyVar], TvSubst) ->
-                       TcM ([HsTypeApp Name], [Either Type TyVar], TvSubst)
-                       -- returns remaining explicit types, Either etypes OR tyvars, and the tvSubst
-                       -- The "either list" is handled by tcInstTyVarsETypes - this preserves correct wrapping order
-createExplicitSubst [] [] (remEtys, etyORvars, subst) = return (reverse remEtys, reverse etyORvars, subst)
-createExplicitSubst e@((ExplicitTy _ (Just ety)):etys) (tv:tvs) (remEtys, etyORvars, subst) =
-  if (isTypeVar tv) then --if there is a type, we add it to the subst
-    createExplicitSubst etys tvs (remEtys, (Left ety):etyORvars, extendTvSubst subst tv ety)
-  else -- if its a kind variable, leave it alone, and propagate the etype
-    createExplicitSubst e tvs (remEtys, (Right tv):etyORvars, subst)
-
-createExplicitSubst e@((ExplicitTy hsType Nothing):etys) (tv:tvs) (remEtys, etyORvars, subst)
- = -- do { warnTc True $ text "Hamidhasan createExplicitSubst...etys:" <+> ppr e <+> text "tvs:" <+> ppr (tv:tvs) $$
-   --   text "etype kinds:" <+> ppr (map kindofEType e) <+> text "tv kinds:" <+> ppr (map idType (tv:tvs)) $$
-   --   text "is first tv a tyvar?" <+> ppr (isTypeVar tv)
-   do { if (isTypeVar tv) then do --(idType tv) gets the kind of the type variable
-           if (deferKindVariable (tyVarKind tv)) then
-               do { (etype, _) <- tcLHsType hsType
-                  ; createExplicitSubst (etys) (tvs)
-                    (remEtys, (Left etype):etyORvars, extendTvSubst subst tv etype) }
-             else
-               do { etype <- tcCheckLHsType hsType (tyVarKind tv)
-                  ; createExplicitSubst (etys) (tvs)
-                    (remEtys, (Left etype):etyORvars, extendTvSubst subst tv etype) }
-        else
-          createExplicitSubst e tvs (remEtys, ((Right tv):etyORvars), subst) }
-
-createExplicitSubst (Unknown:etys) (tv:tvs) (remEtys, etyORvars, subst) = -- if there is no type - "@_" - we add it to tvs
-  createExplicitSubst etys tvs (remEtys, (Right tv):etyORvars, subst)             -- and we "throw away" the Nothing
-  
-createExplicitSubst [] (tv:tvs) (remEtys, etyORvars, subst) =             -- When we run out of etypes, we add the rest of
-  createExplicitSubst [] tvs (remEtys, (Right tv):etyORvars, subst)       -- the type variables
-  
-createExplicitSubst (ety:etys) [] (remEtys, etyORvars, subst) =
-  createExplicitSubst etys [] (ety:remEtys, etyORvars, subst)
--}
---------------------------
-{-
-instExplicitTypes :: TvSubst -> ThetaType -> Type -> (ThetaType, Type)
-instExplicitTypes subst theta tau = (substTheta subst theta, substTy subst tau)
-
-
-instExplicitTypes :: [Type] -> ([TyVar], Type) -> ([TyVar], Type) -- ETypes, Tyvars, and the tau
-instExplicitTypes [] (tvs, tau) = (tvs, tau)
-instExplicitTypes _ ([], _) = panic "Too many explicit types provided, not enough tyvars"
-instExplicitTypes (e:es) ((tv:tvs), tau) = instExplicitTypes es (tvs, substTyWith [tv] [e] tau)
--}
--- The function substTyWith takes a list of types, a list of tyvars, and type, and substitutes the first two into the type.
--- However, it only works if the first two lists are of equal length.
--- The way currently shown will perform the substitution one EType->TyVar at a time, thus, allowing the
--- programmer to not specify all of the explicit types if they do not want to.
-
--- A tuple type is needed so that we also return what tyvars are remaining if any - then we can
--- regularly instantiate these in the tcInstTyVars call.
-
-
-{-
-
-instExplicitType :: Type -> TyVar -> [Type]        -- The exp. type, the tyvar to sub, the fun. sig
-                  -> [Type] -> [Type]              -- an accumulator to replace it, and return it
-instExplicitType _ _ [] accum = accum
-instExplicitType etype tyvar (ty:tys) accum = 
-    case getTyVar_maybe ty of                      -- Todo: subst nested tyvars
-      Nothing  -> instExplicitType etype tyvar tys (ty:accum)
-      Just ty' -> if (tyvar == ty') then instExplicitType etype tyvar tys (etype:accum) 
-                  else instExplicitType etype tyvar tys (ty:accum)
-
--- use tyVarsOfType
--}
-
-
 
 \end{code}
 
@@ -1646,7 +1205,7 @@ Here's a concrete example that does this (test tc200):
 Current solution: only do the "method sharing" thing for the first type/dict
 application, not for the iterated ones.  A horribly subtle point.
 
-Note [Explicit Type Application] Hamidhasan
+Note [Explicit Type Application] Hamidhasan update this
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 First, we get the explicit types from the local environment.
 We then check to see if the programmer has provided more explicit types than

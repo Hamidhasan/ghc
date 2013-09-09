@@ -699,7 +699,6 @@ zonkExpr env (HsWrap co_fn expr)
 zonkExpr _ (HsUnboundVar v)
   = return (HsUnboundVar v)
 
--- Hamidhasan TODO: Does the explicit type application need to be zonked?
 zonkExpr _ (ETypeApp ty)
   = return (ETypeApp ty)
 

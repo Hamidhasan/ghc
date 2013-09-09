@@ -99,7 +99,7 @@ $decdigit  = $ascdigit -- for now, should really be $digit (ToDo)
 $digit     = [$ascdigit $unidigit]
 
 $special   = [\(\)\,\;\[\]\`\{\}]
-$ascsymbol = [\!\#\$\%\&\*\+\.\/\<\=\>\?\\\^\|\-\~] -- Hamidhasan: Note @ has been removed
+$ascsymbol = [\!\#\$\%\&\*\+\.\/\<\=\>\?\\\^\|\-\~]
 $unisymbol = \x04 -- Trick Alex into handling Unicode. See alexGetChar.
 $symbol    = [$ascsymbol $unisymbol] # [$special \_\:\"\'\@]
 
@@ -254,7 +254,7 @@ $tab+         { warn Opt_WarnTabs (text "Tab character") }
    -- NOTE: accept -} at the end of a LINE pragma, for compatibility
    -- with older versions of GHC which generated these.
 
-<0,option_prags> { -- Hamidhasan look here
+<0,option_prags> { 
   "{-#" $whitechar* $pragmachar+
         $whitechar+ $pragmachar+ / { known_pragma twoWordPrags }
                                  { dispatch_pragmas twoWordPrags }
@@ -360,10 +360,6 @@ $tab+         { warn Opt_WarnTabs (text "Tab character") }
   \}                                    { close_brace }
 }
 
--- <0> { Hamidhasan
--- \@ / { ifExtension explicitTypeApplicationEnabled } { typeAppToken }
--- }
-
 <0,option_prags> {
   @qual @varid                  { idtoken qvarid }
   @qual @conid                  { idtoken qconid }
@@ -378,10 +374,6 @@ $tab+         { warn Opt_WarnTabs (text "Tab character") }
   @conid "#"+       / { ifExtension magicHashEnabled } { idtoken conid }
 }
 
--- <0> { -- Hamidhasan: special for parsing type application refactor ... ifExtension explicitTypeApplicationEnabled
--- `alexAndPred` (precededBy ' ')
---   [$tab $whitechar]+ \@    / { ifExtension explicitTypeApplicationEnabled } { warnThen Opt_WarnTabs (text "typeapp") (typeAppToken) }
--- }
 -- ToDo: - move `var` and (sym) into lexical syntax?
 --       - remove backquote from $special?
 <0> {
@@ -510,7 +502,7 @@ data Token
   | ITctype
 
   | ITdotdot                    -- reserved symbols
-  | ITcolon                     -- Hamidhasan: add new symbol here if necessary
+  | ITcolon                     
   | ITdcolon
   | ITequal
   | ITlam
@@ -519,7 +511,7 @@ data Token
   | ITlarrow
   | ITrarrow
   | ITat
-  | ITatapp                     -- Hamidhasan  
+  | ITatapp                     -- For '@Type'
   | ITtilde
   | ITtildehsh
   | ITdarrow
@@ -579,8 +571,8 @@ data Token
   | ITopenDecQuote              --  [d|
   | ITopenTypQuote              --  [t|
   | ITcloseQuote                --  |]
-  | ITidEscape   FastString     --  $x         --this is how template haskell
-  | ITparenEscape               --  $(         -- "steals" $...Hamidhasan
+  | ITidEscape   FastString     --  $x
+  | ITparenEscape               --  $(
   | ITtyQuote                   --  ''
   | ITquasiQuote (FastString,FastString,RealSrcSpan)
     -- ITquasiQuote(quoter, quote, loc)
@@ -698,7 +690,6 @@ reservedSymsFM = listToUFM $
        ,("=>",  ITdarrow,   always)
        ,("-",   ITminus,    always)
        ,("!",   ITbang,     always)
---       ,("&",   ITamper,    always)    -- Hamidhasan explicit ty app
 
         -- For data T (a::*) = MkT
        ,("*", ITstar, always) -- \i -> kindSigsEnabled i || tyFamEnabled i)
@@ -760,7 +751,7 @@ init_strtoken drop f span buf len =
 begin :: Int -> Action
 begin code _span _str _len = do pushLexState code; lexToken
                              
-pop :: Action                                   -- Hamidhasan TODO perhaps look here
+pop :: Action
 pop _span _buf _len = do _ <- popLexState
                          lexToken
 
@@ -969,8 +960,6 @@ qvarid, qconid :: StringBuffer -> Int -> Token
 qvarid buf len = ITqvarid $! splitQualName buf len False
 qconid buf len = ITqconid $! splitQualName buf len False
 
--- Hamidhasan - splitting qualified names
-
 splitQualName :: StringBuffer -> Int -> Bool -> (FastString,FastString)
 -- takes a StringBuffer and a length, and returns the module name
 -- and identifier parts of a qualified name.  Splits at the *last* dot,
@@ -1058,15 +1047,8 @@ sym con span buf len =
   where
     !fs = lexemeToFastString buf len
 
--- Exactly the same as sym, but because it performs one
--- additional check, it is a different function, for efficiency's sake.
--- Hamidhasan. The alternative is to check it at every symbol which
--- ends up failing several performance tests.
-{- addWarning Opt_WarnTabs noSrcSpan $ text "sym extsEnabled:"<+> ppr extsEnabled <+> text "fs" <+> ftext fs $$ text "is at?" <+> ppr (fsLit "@" == fs) <+> text "currentChar" <+> char (currentChar buf) <+> text "prevChar" <+> char (prevChar buf 'h')
-      if ((fsLit "@") == fs)
-        then (if ((prevChar buf 'H') `elem` " \n\r\t\f\v") then return $ L span ITatapp
-              else return $ L span tk)
-        else -}
+-- Similar to sym, but disambiguates '@', which requires
+-- an additional check for extensions and whitespace.
 atsym :: Action
 atsym span buf len =
   case lookupUFM reservedSymsFM fs of
@@ -1075,7 +1057,7 @@ atsym span buf len =
       let !tk | extsEnabled = keyword
               | otherwise   = ITvarsym fs
       etyOn <- extension explicitTypeApplicationEnabled
-      if (etyOn && prevCharIs buf (`elem` " \n\r\t\f\v") 'H')
+      if (etyOn && prevCharIs buf (`elem` " \n\r\t\f\v") ' ')
         then return $ L span ITatapp
         else return $ L span tk
     Nothing ->
@@ -1975,7 +1957,7 @@ explicitNamespacesEnabled flags = testBit flags explicitNamespacesBit
 lambdaCaseEnabled :: Int -> Bool
 lambdaCaseEnabled flags = testBit flags lambdaCaseBit
 
-explicitTypeApplicationEnabled :: Int -> Bool -- Hamidhasan
+explicitTypeApplicationEnabled :: Int -> Bool
 explicitTypeApplicationEnabled flags = testBit flags explicitTypeApplicationBit
 
 -- PState for parsing options pragmas
@@ -2040,7 +2022,7 @@ mkPState flags buf loc =
                .|. typeLiteralsBit             `setBitIf` xopt Opt_DataKinds flags
                .|. explicitNamespacesBit       `setBitIf` xopt Opt_ExplicitNamespaces flags
                .|. lambdaCaseBit               `setBitIf` xopt Opt_LambdaCase               flags
-               .|. explicitTypeApplicationBit  `setBitIf` xopt Opt_ExplicitTypeApplication  flags --Hamidhasan
+               .|. explicitTypeApplicationBit  `setBitIf` xopt Opt_ExplicitTypeApplication  flags
       --
       setBitIf :: Int -> Bool -> Int
       b `setBitIf` cond | cond      = bit b

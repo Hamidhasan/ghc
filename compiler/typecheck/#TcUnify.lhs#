@@ -123,6 +123,9 @@ matchExpectedFunTys :: SDoc 	-- See Note [Herald for matchExpectedFunTys]
 --		(forall a. ty) -> other
 -- If allocated (fresh-meta-var1 -> fresh-meta-var2) and unified, we'd
 -- hide the forall inside a meta-variable
+-- Hamidhasan: Will [possibly] need to use this to check 
+-- the result of applying the type application
+
 
 matchExpectedFunTys herald arity orig_ty 
   = go arity orig_ty
@@ -323,7 +326,7 @@ tcSubType origin ctxt ty_actual ty_expected
   | isSigmaTy ty_actual
   = do { (sk_wrap, inst_wrap) 
             <- tcGen ctxt ty_expected $ \ _ sk_rho -> do
-            { (in_wrap, in_rho) <- deeplyInstantiate origin ty_actual
+            { (in_wrap, in_rho) <- deeplyInstantiate origin ty_actual -- Hamidhasan
             ; cow <- unify in_rho sk_rho
             ; return (coToHsWrapper cow <.> in_wrap) }
        ; return (sk_wrap <.> inst_wrap) }
@@ -1101,6 +1104,8 @@ unifyKindX :: TcKind           -- k1 (actual)
 -- but recurses into the simpler unifyKindEq for any sub-terms
 -- The sub-kinding stuff only applies at top level
 
+-- Hamidhasan: There is some problem here with kinds, check it pls.
+
 unifyKindX (TyVarTy kv1) k2 = uKVar NotSwapped unifyKindX kv1 k2
 unifyKindX k1 (TyVarTy kv2) = uKVar IsSwapped  unifyKindX kv2 k1
 
@@ -1133,6 +1138,8 @@ uKVar swapped unify_kind kv1 k2
 
   | otherwise 
   = return Nothing
+    -- addErrTc $ text "failed to unify ukvars. kv1:" <+> ppr kv1 <+> text "k2" <+> ppr k2
+    
 
 {- Note [Unifying kind variables]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

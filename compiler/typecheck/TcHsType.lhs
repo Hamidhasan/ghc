@@ -1686,22 +1686,11 @@ checkExpectedKind ty act_kind (EK exp_kind ek_ctxt)
 
             more_info = sep [ ek_ctxt tidy_exp_kind <> comma
                             , nest 2 $ ptext (sLit "but") <+> quotes (ppr ty)
-                              <+> ptext (sLit "has kind") <+> quotes (pprKind tidy_act_kind)
-                            , text "Hamidhasan: eq comparison: " <+> quotes (ppr act_kind) <+> quotes (ppr exp_kind) $$
-                              text "unified:" <+> (  case mb_subk of
-                                                                  Just LT -> text "LT"
-                                                                  Just EQ -> text "EQ"
-                                                                  Just GT -> text "GT"
-                                                                  Nothing -> text "Nothing")]
+                              <+> ptext (sLit "has kind") <+> quotes (pprKind tidy_act_kind)]
 
       ; traceTc "checkExpectedKind 1" (ppr ty $$ ppr tidy_act_kind $$ ppr tidy_exp_kind $$ ppr env1 $$ ppr env2)
       ; failWithTcM (env2, err) } } }
 
---Hamidhasan
--- awkward function for type app vs. kind checking
-deferKindVariable :: Kind -> Bool
-deferKindVariable (TyVarTy _ ) = True
-deferKindVariable _            = False
 \end{code}
 
 %************************************************************************
@@ -1875,8 +1864,6 @@ unifyKindMisMatch ki1 ki2 = do
 %*									*
 %************************************************************************
 
-Hamidhasan
-
 Note [Instantiating TyVars with Explicit Types]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 In order to handle explicit type application correctly, by generating a
@@ -1890,6 +1877,31 @@ Unfortunately, this needs to be here instead of in TcMType, because the
 explicit types need to be kind-checked, which is done in this module. Otherwise,
 we would have a circular dependency.
 
+Several cases need to be checked when compiling type applications. These numbers
+correspond to the comments in "tcTyVarsWithApps":
+
+1. If we encounter an type application
+   we check if its a kv or tv. If it's a tv, we substitute it in.
+   If it's a kind variable, we just instantiate regularly.
+
+2. If we encounter an "unknown" application,
+   we instantiate ONE type variable. Then recurse.
+
+3. If we encounter an argument (i.e. none of the above)
+   we instantiate the rest of the type variables, and use
+   tc_inst_finish to do so.
+
+4. Once we see one argument, we need to:
+ a. Iterate through type variables and instantiate all of them.
+ b. Also, seperately, iterate through arguments and throw away all of them
+    until we see the next type application, which needs to be threaded through
+    to the next call of deeply instantiate. (for the next "rank")
+
+5. We also need to rule out giving too many explicit types, but only in
+tcInstTyVarsWithApps which is encountered when we see a type
+application but no more type variables to instantiate it with.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 This interleaving is necessary (and practically impossible to do anywhere else)
 so that the typechecker can generate Type Application HsWrappers in the
 correct order. Otherwise, we end up with incorrect type applications in core.
@@ -1898,19 +1910,20 @@ For example:
   quad :: a -> b -> c -> d -> (a, b, c, d)
   quad x y = (x, y)
 
-  silly :: (a, Bool, Char, b)
-  silly = quad @_ @Bool @Char @_ 5 True 'a' "Hello" 
+  silly :: (a, Bool, Bool, b)
+  silly = quad @_ @Bool @Bool @_ 5 True False 12
 
 We should generate the first of the following, but can easily end up with some
 mismatched applications:
 
-  quad @Integer @Bool @Char @String 5 True 'a' "Hello" -- what we want to generate
+  -- what we want to generate
+  quad @Int @Bool @Bool @Int 5 True False 12 
 
-  quad @Bool @Char @Integer @String 5 True 'a' "Hello" -- if we wrap explicit types first,
-                                                       -- then the resolved type variables
+  -- Explicit types first, then type variables
+  quad @Bool @Bool @Int @Int 5 True False 12
 
-  quad @Integer @String @Bool @Char 5 True 'a' "Hello" -- if we wrap resolved type variables,
-                                                       -- then explicit types
+  -- Type variables first, then explicit types
+  quad @Int @Int @Bool @Bool 5 True False 12
 
 Thus, the wrappers must be interleaved deep within the flow of the typechecker.
 This is most conveniently done here.
@@ -1918,21 +1931,22 @@ This is most conveniently done here.
 
 \begin{code}
 
--- These 4 functions below are essentially the same as the above tcInstTyVar series,
--- except that they thread explicit types in between the new type variables.
--- See Note [Instantiating TyVars with Explicit Types]
+-- See Note [Instantiating TyVars with Explicit Types].
+-- Numbering in note matches the following functions.
 tcInstTyVarsETypes :: [TKVar] -> [LHsExpr Name] -> TcM ([TcTyVar], [TcType], TvSubst, [LHsExpr Name])
 tcInstTyVarsETypes tyvars etypes = tcInstTyVarsWithApps etypes tyvars ([], [], emptyTvSubst, [])
 
 tcInstTyVarsWithApps :: [LHsExpr Name] -> [TyVar] ->
                       ([TcTyVar], [TcType], TvSubst, [LHsExpr Name]) ->
                       TcM ([TcTyVar], [TcType], TvSubst, [LHsExpr Name])
-                      
+
 tcInstTyVarsWithApps [] [] (tctyvars, etyORvars, subst, remArgs) =
   return (reverse tctyvars, reverse etyORvars, subst, reverse remArgs)  
+-- 2.
 tcInstTyVarsWithApps ((L _ (ETypeApp Unknown)):etys) (tv:tvs) (tctyvars, etyORvars, subst, remArgs) = 
   do { (subst', tv') <- tcInstTyVarX subst tv
      ; tcInstTyVarsWithApps etys tvs (tv':tctyvars, (mkTyVarTy tv'):etyORvars, subst', remArgs) }
+-- 1.
 tcInstTyVarsWithApps e@((L _ (ETypeApp (ExplicitTy hsType Nothing))):etys) (tv:tvs) (tctyvars, etyORvars, subst, remArgs) =
   if (isTypeVar tv) then 
     do { etype <- tcCheckLHsType hsType (substTy subst (tyVarKind tv)) -- need to subst so it can unify with kv
@@ -1941,7 +1955,7 @@ tcInstTyVarsWithApps e@((L _ (ETypeApp (ExplicitTy hsType Nothing))):etys) (tv:t
   else
     do { (subst', kv') <- tcInstTyVarX subst tv -- If this is not a tv - it's a kv. instantiate regularly
        ; tcInstTyVarsWithApps e tvs (kv':tctyvars, (mkTyVarTy kv'):etyORvars, subst', remArgs) }
-
+-- 1. also, if the type has been kindchecked elsewhere.
 tcInstTyVarsWithApps e@((L _ (ETypeApp (ExplicitTy _ (Just etype)))):etys) (tv:tvs)
   (tctyvars, etyORvars, subst, remArgs) =
   if (isTypeVar tv) then 
@@ -1950,192 +1964,36 @@ tcInstTyVarsWithApps e@((L _ (ETypeApp (ExplicitTy _ (Just etype)))):etys) (tv:t
     do { (subst', kv') <- tcInstTyVarX subst tv
        ; tcInstTyVarsWithApps e tvs (kv':tctyvars, (mkTyVarTy kv'):etyORvars, subst', remArgs) }
 
--- If we hit here, this means that the programmer provided too many explicit types,
--- that did not instantiate properly. 
+-- Kindchecking would involve simply adding a few new cases here, and inverting the
+-- if-statements above.
+
+-- 5.
 tcInstTyVarsWithApps (((L _ (ETypeApp ety)):_)) [] (tctyvars, etyORvars, subst, remArgs) =
   do { addErrTc $ text "Provided an extra explicit type, " <+> (quotes $ ppr ety) <> char ',' $$
        text "which was not substituted, as there were no type variables remaining."
      ; return (reverse tctyvars, reverse etyORvars, subst, remArgs) }
  
--- If we encounter an actual argument, the type applications are done
--- We now instantiate ALL of the remaining type variables.
+-- 4.
 tcInstTyVarsWithApps etys tvs (tctyvars, etyORvars, subst, remArgs) =
   tc_inst_finish etys tvs (tctyvars, etyORvars, subst, remArgs)
 
 -- tc_inst_finish resolves two things, in this order:
 -- 1. We instantiate the rest of the type variables.
--- 2. We throw away the non-type application arguments, until we hit the first one.
+-- 2. We throw away the non-type application arguments, until we hit the first type.
 -- This is returned so that it can be tossed down to the next level of instantiation
 tc_inst_finish :: [LHsExpr Name] -> [TyVar] -> ([TcTyVar], [TcType], TvSubst, [LHsExpr Name])
                   -> TcM ([TcTyVar], [TcType], TvSubst, [LHsExpr Name])
- -- We've hit the next set of type arguments. This needs to be passed down to the next level
- -- of instantiation.
 tc_inst_finish [] [] (tctyvars, etyORvars, subst, remArgs) =
-  return $ (reverse tctyvars, reverse etyORvars, subst, reverse remArgs)
   
+  return $ (reverse tctyvars, reverse etyORvars, subst, reverse remArgs)
 tc_inst_finish e@((L _ (ETypeApp _)):_) [] (tctyvars, etyORvars, subst, remArgs) =
   return $ (reverse tctyvars, reverse etyORvars, subst, (reverse remArgs) ++ e)
-
--- We don't care about non-app args at this point. Throw away argument and recurse.
+  
 tc_inst_finish (_:args) [] (tctyvars, etyORvars, subst, remArgs) =
   tc_inst_finish args [] (tctyvars, etyORvars, subst, remArgs)
 
 tc_inst_finish args (tv:tvs) (tctyvars, etyORvars, subst, remArgs) =
   do { (subst', tv') <- tcInstTyVarX subst tv
      ; tc_inst_finish args tvs (tv':tctyvars, (mkTyVarTy tv'):etyORvars, subst', remArgs) }
-
-
-{-
-
--- If we hit here, this means that the programmer provided too many explicit types,
--- that did not instantiate properly. 
-tcInstTyVarsWithApps etypes [] (tctyvars, etyORvars, subst, remArgs) =
-  do { let len = length etypes in           --deep instantiation, then warn the programmer
-           addErrTc $                   
-           text "Provided" <+> speakNOf len (text "extra explicit type") <> char ',' <+>
-           text "which the set of type variables" $$ (ppr tctyvars) <+> text "could not use for substitution." $$
-           text "The following type argument" <> (if len > 1 then text "s were" else text " was") $$
-           text "not applied:" <+> ppr etypes
-     ; return (reverse tctyvars, reverse etyORvars, subst, remArgs) }
-
-
-If we encounter an type application
-we check if its a kv or tv. If it's a tv, we substitute it in.
-If it's a kind variable, we just instantiate regularly.
-
-If we encounter an "unknown" application,
-we instantiate ONE type variable. Then recurse.
-
-If we encounter an argument (i.e. none of the above)
-we instantiate the rest of the type variables.
-
-How do we
-a. return the rest of the arguments corectly
-b. report an error if too many explicit types have been applied
-c. correctly instantiate even if some type args are left off.
-
-Once we see one argument, we need to:
- 1. iterate through type variables and instantiate all of them.
- 2. also, seperately, iterate through arguments and throw away all of them
-    until we see the next type application, which needs to be threaded through
-    to the next call of deeply instantiate. (for the next "rank")
-
-There are these fail cases:
- 1. Giving too many explicit types (in the tcInstTyVarsTypeApps function),
- which is encountered when we see a type application but no more type variables.
-
-f :: forall a b. a -> b -> forall c . c -> (a, b, c)
-f @Int @Int 1 2 @Int 3
--}
-{-
-createExplicitSubst :: [HsTypeApp Name] -> [TyVar]  ->                 -- Type Applications, and TyVars
-                       ([HsTypeApp Name], [Either Type TyVar], TvSubst) ->
-                       TcM ([HsTypeApp Name], [Either Type TyVar], TvSubst)
-                       -- returns remaining explicit types, Either etypes OR tyvars, and the tvSubst
-                       -- The "either list" is handled by tcInstTyVarsETypes - this preserves correct wrapping order
-createExplicitSubst [] [] (remEtys, etyORvars, subst) = return (reverse remEtys, reverse etyORvars, subst)
-createExplicitSubst e@((ExplicitTy _ (Just ety)):etys) (tv:tvs) (remEtys, etyORvars, subst) =
-  if (isTypeVar tv) then --if there is a type, we add it to the subst
-    createExplicitSubst etys tvs (remEtys, (Left ety):etyORvars, extendTvSubst subst tv ety)
-  else -- if its a kind variable, leave it alone, and propagate the etype
-    createExplicitSubst e tvs (remEtys, (Right tv):etyORvars, subst)
-
-createExplicitSubst e@((ExplicitTy hsType Nothing):etys) (tv:tvs) (remEtys, etyORvars, subst)
- = -- do { warnTc True $ text "Hamidhasan createExplicitSubst...etys:" <+> ppr e <+> text "tvs:" <+> ppr (tv:tvs) $$
-   --   text "etype kinds:" <+> ppr (map kindofEType e) <+> text "tv kinds:" <+> ppr (map idType (tv:tvs)) $$
-   --   text "is first tv a tyvar?" <+> ppr (isTypeVar tv)
-   do { if (isTypeVar tv) then do --(idType tv) gets the kind of the type variable
-           if (deferKindVariable (tyVarKind tv)) then
-               do { (etype, _) <- tcLHsType hsType
-                  ; createExplicitSubst (etys) (tvs)
-                    (remEtys, (Left etype):etyORvars, extendTvSubst subst tv etype) }
-             else
-               do { etype <- tcCheckLHsType hsType (tyVarKind tv)
-                  ; createExplicitSubst (etys) (tvs)
-                    (remEtys, (Left etype):etyORvars, extendTvSubst subst tv etype) }
-        else
-          createExplicitSubst e tvs (remEtys, ((Right tv):etyORvars), subst) }
-
-createExplicitSubst (Unknown:etys) (tv:tvs) (remEtys, etyORvars, subst) = -- if there is no type - "@_" - we add it to tvs
-  createExplicitSubst etys tvs (remEtys, (Right tv):etyORvars, subst)             -- and we "throw away" the Nothing
-  
-createExplicitSubst [] (tv:tvs) (remEtys, etyORvars, subst) =             -- When we run out of etypes, we add the rest of
-  createExplicitSubst [] tvs (remEtys, (Right tv):etyORvars, subst)       -- the type variables
-  
-createExplicitSubst (ety:etys) [] (remEtys, etyORvars, subst) =
-  createExplicitSubst etys [] (ety:remEtys, etyORvars, subst)
--}
-
-{-  
-tcInstTyVarEType ::  TvSubst -> (HsTypeApp Name, TKVar) -> TcM (TvSubst, (Maybe TcTyVar, TcType))
-tcInstTyVarEType subst (Unknown, tv) = tcInstTyVarXType subst tv
-tcInstTyVarEType subst (etype, tv) = tcInstEType subst etype tv
-
--- This function "consumes" the explicit types. The HsTypeApp construct essentially
--- disappears after this function, applying its TcType and preparing for wrapper
-
-tcInstEType :: TvSubst -> HsTypeApp Name -> TyVar -> TcM (TvSubst, (Maybe TcTyVar, TcType))
-tcInstEType subst (ExplicitTy hsType Nothing) tv =
-  if (isTypeVar tv) then
-    do { etype <- tcCheckLHsType hsType (tyVarKind tv)  -- kind needs to be checked
-       ; warnTc True $ text "checked etype:" <+> ppr etype $$ text "extending subst" <+> ppr (extendTvSubst subst tv etype)           
-       ; return ((extendTvSubst subst tv etype), (Nothing, etype))  } 
-  else tcInstTyVarXType subst tv -- don't apply explicit types to kind variables, but instantiate the kind variable normally
-tcInstEType subst (ExplicitTy _ (Just etype)) tv =
-  if (isTypeVar tv) then
-    do { return ((extendTvSubst subst tv etype), (Nothing, etype))  } 
-  else tcInstTyVarXType subst tv
-tcInstEType subst Unknown tv = tcInstTyVarXType subst tv
-
- construction used in several of the etype functions 
-tcInstTyVarXType :: TvSubst -> TyVar -> TcM (TvSubst, (Maybe TcTyVar, TcType))       
-tcInstTyVarXType subst tv = 
- do { (subst', tv') <- tcInstTyVarX subst tv
-    ; return (subst', (Just tv', mkTyVarTy tv')) }
--}
-  {- old version Hamidhasan
-tcInstTyVarETypes :: TvSubst -> Either Type TyVar -> TcM (TvSubst, Either Type TcTyVar)
-tcInstTyVarETypes subst (Left ety)
-  = return (subst, Left ety) -- need to 1. check etype 2. instantiate/subst in
-tcInstTyVarETypes subst (Right tyvar)
-  = do  { uniq <- newUnique
-        ; details <- newMetaDetails TauTv
-        ; let name   = mkSystemName uniq (getOccName tyvar)
-              kind   = substTy subst (tyVarKind tyvar)
-              new_tv = mkTcTyVar name kind details 
-        ; return (extendTvSubst subst tyvar (mkTyVarTy new_tv), Right new_tv) }
--- /old version -}
-
-{- old version Hamidhasan
-tcInstTyVarsETypesX :: TvSubst -> [Either Type TKVar] -> TcM ([TcTyVar], [TcType], TvSubst)
-tcInstTyVarsETypesX subst etypesORtyvars =
-  do { (subst', etypesORtyvars') <- mapAccumLM tcInstTyVarETypes subst etypesORtyvars
-     ; (tyvars', tyvarsANDetypes) <- return $ resolveETypesTyVars etypesORtyvars' ([], [])
-     ; return (tyvars', tyvarsANDetypes, subst') }
- /old version -}
-
-
-{- old 
-resolveETypesTyVars :: [Either Type TcTyVar] -> ([TcTyVar], [TcType])
-                       -> ([TcTyVar], [TcType])
-resolveETypesTyVars [] (tyvars, bothTypes) = (reverse tyvars, reverse bothTypes)
-resolveETypesTyVars (Left ety:eithers) (tyvars, bothTypes) =
-  resolveETypesTyvars eithers (tyvars, ety:bothTypes)
-resolveETypesTyVars (Right tyvar:eithers) (tyvars, bothTypes) =
-  resolveETypesTyvars eithers (tyvar:tyvars, (mkTyVarTy tyvar):bothTypes)
- /old
-
-tcInstTyVarsETypesX :: TvSubst -> [TyVar] -> [LHsExpr Name]-> TcM ([TcTyVar], [TcType], TvSubst, [LHsExpr Name])
-tcInstTyVarsETypesX subst tyvars etypes = 
-  do { (substApps, remainingApps) <- return $ splitAtList tyvars etypes 
-     ; (tctyvars, tyvarsANDetypes, subst', remArgs) <- tcInstTyVarsWithApps substApps tyvars ([], [], subst, [])
-     ; return (tctyvars, tyvarsANDetypes, subst', remainingApps) }
-
-
-
--}
-
--- Hamidhasan
-
 
 \end{code}

@@ -250,7 +250,7 @@ mkExportedLocalId name ty = Var.mkExportedLocalVar VanillaId name ty vanillaIdIn
 
 
 -- | Create a system local 'Id'. These are local 'Id's (see "Var#globalvslocal")
--- that are created by the compiler out of thin air Hamidhasan
+-- that are created by the compiler out of thin air
 mkSysLocal :: FastString -> Unique -> Type -> Id
 mkSysLocal fs uniq ty = mkLocalId (mkSystemVarName uniq fs) ty
 

@@ -275,7 +275,7 @@ type HsTyOp name = (HsTyWrapper, name)
 mkHsOpTy :: LHsType name -> Located name -> LHsType name -> HsType name
 mkHsOpTy ty1 op ty2 = HsOpTy ty1 (WpKiApps [], op) ty2
 
--- Hamidhasan Explicit Type Application datatype convenient for threading
+-- Hamidhasan TODO: MAke this a Note. Explicit Type Application datatype convenient for threading
 data HsTypeApp name 
   = Unknown
   | ExplicitTy (LHsType name) (Maybe Type)
@@ -700,7 +700,7 @@ ppr_tylit :: HsTyLit -> SDoc
 ppr_tylit (HsNumTy i) = integer i
 ppr_tylit (HsStrTy s) = text (show s)
 
-pprHsTypeApp :: (OutputableBndr name) => HsTypeApp name -> SDoc -- Hamidhasan
+pprHsTypeApp :: (OutputableBndr name) => HsTypeApp name -> SDoc
 pprHsTypeApp (ExplicitTy hsTy Nothing)  = char '@' <> ppr hsTy
 pprHsTypeApp (ExplicitTy _ (Just ty))   = char '@' <> ppr ty
 pprHsTypeApp Unknown                    = char '@' <> char '_'

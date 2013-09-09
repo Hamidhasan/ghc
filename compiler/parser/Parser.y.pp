@@ -309,7 +309,7 @@ incorrect.
  '<-'           { L _ ITlarrow }
  '->'           { L _ ITrarrow }
  '@'            { L _ ITat    }
- ' @'           { L _ ITatapp }
+ ' @'           { L _ ITatapp } -- For type application '@Int'
  '~'            { L _ ITtilde }
  '~#'           { L _ ITtildehsh }
  '=>'           { L _ ITdarrow }
@@ -321,7 +321,6 @@ incorrect.
  '-<<'          { L _ ITLarrowtail }            -- for arrow notation
  '>>-'          { L _ ITRarrowtail }            -- for arrow notation
  '.'            { L _ ITdot }
--- '&'            { L _ ITamper }                 -- Hamidhasan for explicit type application 
 
  '{'            { L _ ITocurly }                        -- special symbols
  '}'            { L _ ITccurly }
@@ -1096,7 +1095,6 @@ context :: { LHsContext RdrName }
                                              (LL $ HsEqTy $1 $3) }
         | btype                         {% checkContext $1 }
 
--- Hamidhasan: look here for types
 type :: { LHsType RdrName }
         : btype                         { $1 }
         | btype qtyconop type           { LL $ mkHsOpTy $1 $2 $3 }
@@ -1125,8 +1123,6 @@ btype :: { LHsType RdrName }
         : btype atype                   { LL $ HsAppTy $1 $2 }
         | atype                         { $1 }
 
--- Hamidhasan - in order to implement record style syntax, may need to do
--- something here. but I dont think so
 atype :: { LHsType RdrName }
         : ntgtycon                       { L1 (HsTyVar (unLoc $1)) }      -- Not including unit tuples
         | tyvar                          { L1 (HsTyVar (unLoc $1)) }      -- (See Note [Unit tuples])
@@ -1516,21 +1512,7 @@ hpc_annot :: { Located (FastString,(Int,Int),(Int,Int)) }
                                                        )
                                                  }
 
---        : fexp '&' etypes                      { LL $ HsApp $1 $3 }  
--- etypes  :: { LHsExpr RdrName }
---         : type '&' etypes                  { LL $ ETypeApp $1 $3 }
---         | type aexp                        { LL $ ETypeApp $1 $2 } 
-
--- Hamidhasan: here is the as pattern. figure out what all these
--- fexp and aexp mean.
--- I think fexp stands for "function expression"
--- and aexp stands for ... application expression? not sure. 
-
--- should lazy pat also be able to recurse on aexp OR atexp? right now I
--- may have actually changed the functionality.
-
 fexp    :: { LHsExpr RdrName }
---        : fexp atexp                           { LL $ HsApp $1 $2 } 
         : fexp aexp                            { LL $ HsApp $1 $2 }
         | aexp                                 { $1 }
 
@@ -1539,16 +1521,7 @@ aexp    :: { LHsExpr RdrName }
         | '~' aexp                      { LL $ ELazyPat $2 }  
         | ' @' atype                    { LL $ ETypeApp (ExplicitTy $2 Nothing) }
         | ' @' '_'                      { LL $ ETypeApp (Unknown) }
---        | ' @' atype aexp               { LL $ HsApp (L (comb2 $1 $2) (ETypeApp (Just $2))) $3 } -- put location info
---        | ' @' '_' aexp                 { LL $ HsApp (L (comb2 $1 $2) (ETypeApp (Nothing))) $3 } -- Hamidhasan put location info
         | aexp1                         { $1 }
-
--- A special rule for handling type applications versus as patterns.
--- They need to be the same precedence, or one will bind stronger than the other. 
--- atexp   :: { LHsExpr RdrName }             
---        : qvar '@' aexp                  { LL $ EAsPat $1 $3 }
---        | ' @' atype                      { LL $ ETypeApp (Just $2) }
---        | ' @' '_'                        { LL $ ETypeApp (Nothing) }
 
 aexp1   :: { LHsExpr RdrName }
         : aexp1 '{' fbinds '}'  {% do { r <- mkRecConstrOrUpdate $1 (comb2 $2 $4) $3
@@ -1579,10 +1552,6 @@ aexp2   :: { LHsExpr RdrName }
         | '[:' parr ':]'                { LL (unLoc $2) }
         | '_'                           { L1 EWildPat }
 
-        --Hamidhasan: Here are the expressions for explicit type application. May be need to move it
-        --up in the grammar so it doesn't parse in some cases, though we could check this later.
---        | '&' atype                     { LL $ ETypeApp $2 }
---        | '@' atype                      { LL $ ETypeApp $2 }
         -- Template Haskell Extension
         | TH_ID_SPLICE          { L1 $ HsSpliceE (mkHsSplice 
                                         (L1 $ HsVar (mkUnqual varName 
@@ -1603,9 +1572,6 @@ aexp2   :: { LHsExpr RdrName }
 
         -- arrow notation extension
         | '(|' aexp2 cmdargs '|)'       { LL $ HsArrForm $2 Nothing (reverse $3) }
-
-             --Hamidhasan: I believe something needs to be added here for
-             --explicit type application. 
 
 cmdargs :: { [LHsCmdTop RdrName] }
         : cmdargs acmd                  { $2 : $1 }

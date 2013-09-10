@@ -1511,7 +1511,7 @@ fexp    :: { LHsExpr RdrName }
         | aexp                                 { $1 }
 
 aexp    :: { LHsExpr RdrName }                     
-        : qvar '@' aexp                 { LL $ EAsPat $1 $3 } -- Change this perhaps in renamer?
+        : qvar '@' aexp                 { LL $ EAsPat $1 $3 }
         | '~' aexp                      { LL $ ELazyPat $2 }  
         | aexp1                         { $1 }
 

@@ -256,7 +256,7 @@ $tab+         { warn Opt_WarnTabs (text "Tab character") }
    -- NOTE: accept -} at the end of a LINE pragma, for compatibility
    -- with older versions of GHC which generated these.
 
-<0,option_prags> { 
+<0,option_prags> {
   "{-#" $whitechar* $pragmachar+
         $whitechar+ $pragmachar+ / { known_pragma twoWordPrags }
                                  { dispatch_pragmas twoWordPrags }
@@ -378,10 +378,12 @@ $tab+         { warn Opt_WarnTabs (text "Tab character") }
 
 -- ToDo: - move `var` and (sym) into lexical syntax?
 --       - remove backquote from $special?
+
+-- No special qatsym - if it's qualified, it certainly isn't a type application
 <0> {
   @qual @varsym                                    { idtoken qvarsym }
   @qual @consym                                    { idtoken qconsym }
-  @qual @atsym                                     { idtoken qvarsym } --if its qualified, it certainly isn't a type application
+  @qual @atsym                                     { idtoken qvarsym }
   @varsym                                          { varsym }
   @consym                                          { consym }
   @atsym                                           { atsym  }
@@ -512,7 +514,7 @@ data Token
   | ITctype
 
   | ITdotdot                    -- reserved symbols
-  | ITcolon                     
+  | ITcolon
   | ITdcolon
   | ITequal
   | ITlam
@@ -768,7 +770,7 @@ init_strtoken drop f span buf len =
 
 begin :: Int -> Action
 begin code _span _str _len = do pushLexState code; lexToken
-                             
+
 pop :: Action
 pop _span _buf _len = do _ <- popLexState
                          lexToken
@@ -1071,7 +1073,7 @@ sym con span buf len =
       extsEnabled <- extension exts
       let !tk | extsEnabled = keyword
               | otherwise   = con fs
-      return $ L span tk 
+      return $ L span tk
     Nothing ->
       return $ L span $! con fs
   where

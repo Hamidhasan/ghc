@@ -128,7 +128,7 @@ matchExpectedFunTys herald arity orig_ty
   = go arity orig_ty
   where
     -- If     go n ty = (co, [t1,..,tn], ty_r)
-    -- then   co : ty ~ t1 -> .. -> tn -> ty_r 
+    -- then   co : ty ~ t1 -> .. -> tn -> ty_r
 
     go n_req ty
       | n_req == 0 = return (mkTcReflCo ty, [], ty)

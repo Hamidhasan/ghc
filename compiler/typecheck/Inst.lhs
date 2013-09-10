@@ -16,7 +16,6 @@ The @Inst@ type: dictionaries or method instances
 module Inst ( 
        deeplySkolemise, 
        deeplyInstantiate, instCall, instStupidTheta,
---       createExplicitSubst,
        emitWanted, emitWanteds,
 
        newOverloadedLit, mkOverLit, 
@@ -186,7 +185,6 @@ deeplyInstantiate orig ty
                  mkFunTys arg_tys rho2) }
 
   | otherwise = return (idHsWrapper, ty)
-
 \end{code}
 
 
@@ -207,7 +205,7 @@ instCall :: CtOrigin -> [TcType] -> TcThetaType -> TcM HsWrapper
 
 instCall orig tys theta 
   = do	{ dict_app <- instCallConstraints orig theta
-        ; return (dict_app <.> mkWpTyApps tys) }
+  ; return (dict_app <.> mkWpTyApps tys) }
 
 ----------------
 instCallConstraints :: CtOrigin -> TcThetaType -> TcM HsWrapper

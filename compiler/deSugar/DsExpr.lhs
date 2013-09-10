@@ -265,7 +265,7 @@ will sort it out.
 \begin{code}
 dsExpr (OpApp e1 op _ e2)
   = -- for the type of y, we need the type of op's 2nd argument
-    mkCoreAppsDs <$> dsLExpr op <*> mapM dsLExpr [e1, e2] 
+    mkCoreAppsDs <$> dsLExpr op <*> mapM dsLExpr [e1, e2]
     
 dsExpr (SectionL expr op)       -- Desugar (e !) to ((!) e)
   = mkCoreAppDs <$> dsLExpr op <*> dsLExpr expr

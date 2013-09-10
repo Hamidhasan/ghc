@@ -318,7 +318,7 @@ data HsExpr id
 
   | ETypeApp    (HsTypeApp id) -- Explicit type argument; e.g  f @Int x y 
 
----------------------------------------
+  ---------------------------------------
   -- Finally, HsWrap appears only in typechecker output
 
   |  HsWrap     HsWrapper    -- TRANSLATION

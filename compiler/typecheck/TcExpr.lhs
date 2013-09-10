@@ -129,7 +129,6 @@ tcInfExpr (HsVar f)     = tcInferId f []
 tcInfExpr (HsPar e)     = do { (e', ty) <- tcInferRhoNC e
                              ; return (HsPar e', ty) }
 tcInfExpr (HsApp e1 e2) = tcInferApp e1 [e2]                                 
-
 tcInfExpr e             = tcInfer (tcExpr e)
 
 tcHole :: OccName -> TcRhoType -> TcM (HsExpr TcId)
@@ -156,7 +155,7 @@ tcExpr e res_ty | debugIsOn && isSigmaTy res_ty     -- Sanity check
                 = pprPanic "tcExpr: sigma" (ppr res_ty $$ ppr e)
 
 tcExpr (HsVar name)  res_ty = tcCheckId name res_ty
-                 
+
 tcExpr (HsApp e1 e2) res_ty = tcApp e1 [e2] res_ty
 
 tcExpr (HsLit lit)   res_ty = do { let lit_ty = hsLitType lit
@@ -905,7 +904,7 @@ tcApp (L _ (HsPar e)) args res_ty
   = tcApp e args res_ty
 
 tcApp (L _ (HsApp e1 e2)) args res_ty
-  = tcApp e1 (e2:args) res_ty	-- Accumulate the arguments
+  = tcApp e1 (e2:args) res_ty	 -- Accumulate the arguments
 
 tcApp (L loc (HsVar fun)) args res_ty
   | fun `hasKey` tagToEnumKey
@@ -927,20 +926,21 @@ tcApp fun argsANDetys res_ty
 	; (co_fun, expected_arg_tys, actual_res_ty)
 	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau         
 
-	-- Typecheck the result, thereby propagating 
+        -- Typecheck the result, thereby propagating
         -- info (if any) from result into the argument types
         -- Both actual_res_ty and res_ty are deeply skolemised
         ; co_res <- addErrCtxtM (funResCtxt True (unLoc fun) actual_res_ty res_ty) $
                     unifyType actual_res_ty res_ty
                     
-	-- Typecheck the arguments
-	; args1 <- tcArgs fun args expected_arg_tys
+        -- Typecheck the arguments
+        ; args1 <- tcArgs fun args expected_arg_tys
 
         -- Assemble the result
         ; let fun2 = mkLHsWrapCo co_fun fun1
               app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 args1)
 
         ; return (unLoc app) }
+
 
 mk_app_msg :: LHsExpr Name -> SDoc
 mk_app_msg fun = sep [ ptext (sLit "The function") <+> quotes (ppr fun)
@@ -950,17 +950,17 @@ mk_app_msg fun = sep [ ptext (sLit "The function") <+> quotes (ppr fun)
 tcInferApp :: LHsExpr Name -> [LHsExpr Name] -- Function and args
            -> TcM (HsExpr TcId, TcRhoType) -- Translated fun and args
 
-tcInferApp (L _ (HsPar e)) args     = tcInferApp e args
+tcInferApp (L _ (HsPar e))     args = tcInferApp e args
 tcInferApp (L _ (HsApp e1 e2)) args = tcInferApp e1 (e2:args)
 tcInferApp fun argsANDetys
   = -- Very like the tcApp version, except that there is
     -- no expected result type passed in
     do	{ (fun1, fun_tau) <- tcInferFun fun argsANDetys
         ; let args = filter (not . isEType) argsANDetys
-	; (co_fun, expected_arg_tys, actual_res_ty)
-	      <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
-	; args1 <- tcArgs fun args expected_arg_tys
-	; let fun2 = mkLHsWrapCo co_fun fun1
+        ; (co_fun, expected_arg_tys, actual_res_ty)
+              <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
+        ; args1 <- tcArgs fun args expected_arg_tys
+        ; let fun2 = mkLHsWrapCo co_fun fun1
               app  = foldl mkHsApp fun2 args1
         ; return (unLoc app, actual_res_ty) }
 
@@ -1102,9 +1102,9 @@ tcInferIdWithOrig orig id_name etypes
     lookup_id :: TcM TcId
     lookup_id
        = do { thing <- tcLookup id_name
-	    ; case thing of  
-    	    	 ATcId { tct_id = id, tct_level = lvl }
-	           -> do { check_naughty id        -- Note [Local record selectors]
+            ; case thing of
+                 ATcId { tct_id = id, tct_level = lvl }
+                   -> do { check_naughty id        -- Note [Local record selectors]
                          ; checkThLocalId id lvl
                          ; return id }
 

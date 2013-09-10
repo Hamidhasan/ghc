@@ -1212,7 +1212,7 @@ any foralls.  E.g.
 	f :: (?x::Int) => Int -> Int
 
 \begin{code}
-isSigmaTy :: Type -> Bool  
+isSigmaTy :: Type -> Bool
 isSigmaTy ty | Just ty' <- tcView ty = isSigmaTy ty'
 isSigmaTy (ForAllTy _ _) = True
 isSigmaTy (FunTy a _)    = isPredTy a

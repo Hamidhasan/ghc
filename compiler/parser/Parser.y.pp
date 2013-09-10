@@ -1513,8 +1513,6 @@ fexp    :: { LHsExpr RdrName }
 aexp    :: { LHsExpr RdrName }                     
         : qvar '@' aexp                 { LL $ EAsPat $1 $3 } -- Change this perhaps in renamer?
         | '~' aexp                      { LL $ ELazyPat $2 }  
-        | ' @' atype                    { LL $ ETypeApp (ExplicitTy $2 Nothing) }
-        | ' @' '_'                      { LL $ ETypeApp (Unknown) }
         | aexp1                         { $1 }
 
 aexp1   :: { LHsExpr RdrName }
@@ -1531,7 +1529,10 @@ aexp2   :: { LHsExpr RdrName }
 --      | STRING                        { sL (getLoc $1) (HsOverLit $! mkHsIsString (getSTRING $1) placeHolderType) }
         | INTEGER                       { sL (getLoc $1) (HsOverLit $! mkHsIntegral (getINTEGER $1) placeHolderType) }
         | RATIONAL                      { sL (getLoc $1) (HsOverLit $! mkHsFractional (getRATIONAL $1) placeHolderType) }
-        
+
+        | ' @' atype                    { LL $ ETypeApp (ExplicitTy $2 Nothing) }
+        | ' @' '_'                      { LL $ ETypeApp (Unknown) }
+
         -- N.B.: sections get parsed by these next two productions.
         -- This allows you to write, e.g., '(+ 3, 4 -)', which isn't
         -- correct Haskell (you'd have to write '((+ 3), (4 -))')
@@ -1646,6 +1647,23 @@ lexps :: { Located [LHsExpr RdrName] }
         : lexps ',' texp                { LL (((:) $! $3) $! unLoc $1) }
         | texp ',' texp                 { LL [$3,$1] }
 
+{- Note [Parsing Type Application]
+   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   The most interesting part of parsing type application
+   happens in the Lexer. If the extension is turned on,
+   the lexer does a check at each '@' which checks if it
+   is preceded by whitespace. If it is, it produces ' @',
+   if not, it produces '@', creating two different tokens.
+
+   The parser can then easily differentiate between these
+   two tokens and produce the correct expression
+   (EAsPat vs. ETypeApp) painlessly. If the extension is
+   not turned on, only as-patterns will be parsed, but
+   a new change in the renamer will suggest turning on
+   the extension if it encounters an as-pattern in the
+   expression context.
+
+-}
 -----------------------------------------------------------------------------
 -- List Comprehensions
 

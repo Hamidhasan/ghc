@@ -28,7 +28,7 @@ module TcHsType (
         kcHsTyVarBndrs, tcHsTyVarBndrs, 
         tcHsLiftedType, tcHsOpenType,
 	tcLHsType, tcCheckLHsType, 
-        tcHsContext, tcInferApps, tcHsArgTys, deferKindVariable,
+        tcHsContext, tcInferApps, tcHsArgTys,
 
         kindGeneralize, checkKind,
 

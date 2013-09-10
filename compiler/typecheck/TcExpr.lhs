@@ -880,12 +880,19 @@ arithSeqEltType (Just fl) res_ty
 %*                                                                      *
 %************************************************************************
 
-Note [Threading Explicit Type Application] Hamidhasan this needs to be updated
+Note [Threading Type Applications]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-In order for explicit types to be available to the function's application, but
-_not_ the [first-class function] arguments to the function being applied, 
-the explicit types have to be threaded through seperately until all collected,
-then they can be placed within the local environment.
+The type arguments are parsed as regular arguments and collected, much the
+same way regular arguments are now. These arguments eventually need to end
+up in tcInstTyVarsETypes, since they are applied at the level of
+instantiation. Thus, an extra parameter of [LHsExpr Name] is threaded
+through the following functions, in this order:
+
+tcApp -> tcInferFun -> tcInferId -> tcInferIdWithOrigin ->
+instantiateOuter and deeplyInstantiateApp, which both call tcInstTyVarsETypes.
+
+tcInferApp works similarly, but skips tcInferId -> tcInferIdWithOrigin and
+directly calls deeplyInstantiateApp.
 
 This is done through recursion, similar to the way the function's arguments
 are currently handled.
@@ -910,8 +917,9 @@ tcApp (L loc (HsVar fun)) args res_ty
   = tcSeq loc fun arg1 arg2 res_ty
 
 tcApp fun argsANDetys res_ty
-  = do	{   -- Type-check the function
+  = do	{   -- Type-check the function. See Note [Threading Type Applications]
 	; (fun1, fun_tau) <- tcInferFun fun argsANDetys
+                             
             -- Explicit Types have been used up - throw them away
         ; let args = filter (not . isEType) argsANDetys
               
@@ -974,7 +982,7 @@ tcInferFun fun etypes_and_args
        ; (wrap, rho, remainingETypes) <- deeplyInstantiateApp AppOrigin etypes_and_args fun_ty'
        ; if (not (null remainingETypes)
             && (any isEType remainingETypes)) then
-           let len = length etypes in   -- If there are any remaining explicit types even after          
+           let len = length etypes_and_args in   -- If there are any remaining explicit types even after          
            addErrTc $                   -- deep instantiation, then warn the programmer
            text "Provided" <+> speakNOf len (text "explicit type") <> char ',' $$
            text "but the function" <+> ppr fun <+> text "had fewer type variables." $$
@@ -1065,7 +1073,7 @@ in the other order, the extra signature in f2 is reqd.
 \begin{code}
 tcCheckId :: Name -> TcRhoType -> TcM (HsExpr TcId)
 tcCheckId name res_ty
-  = do { (expr, actual_res_ty) <- tcInferId name [] -- Hamidhasan check
+  = do { (expr, actual_res_ty) <- tcInferId name []
        ; addErrCtxtM (funResCtxt False (HsVar name) actual_res_ty res_ty) $
          tcWrapResult expr actual_res_ty res_ty }
 
@@ -1146,7 +1154,7 @@ instantiateOuter orig id etypes
     (tvs, theta, tau) = tcSplitSigmaTy (idType id)
 
 -- In order for explicit type applications to work nicely, a version of deeplyInstantiate
--- is included here. Many of these are dependency issues.
+-- is included here. Mainly for dependency reasons.
 deeplyInstantiateApp :: CtOrigin -> [LHsExpr Name] -> TcSigmaType -> TcM (HsWrapper, TcRhoType, [LHsExpr Name])
 deeplyInstantiateApp orig etypes ty
   | Just (arg_tys, tvs, theta, rho) <- tcDeepSplitSigmaTy_maybe ty
@@ -1163,7 +1171,6 @@ deeplyInstantiateApp orig etypes ty
        ; return (mkWpLams ids1 
                     <.> wrap2
                     <.> wrap1
-                 --   <.> mkWpTyApps appliedETypes --wrapping in the etypes
                     <.> mkWpEvVarApps ids1,
                  mkFunTys arg_tys rho2,
                  leftOverETypes) } 
@@ -1204,29 +1211,6 @@ Here's a concrete example that does this (test tc200):
 
 Current solution: only do the "method sharing" thing for the first type/dict
 application, not for the iterated ones.  A horribly subtle point.
-
-Note [Explicit Type Application] Hamidhasan update this
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-First, we get the explicit types from the local environment.
-We then check to see if the programmer has provided more explicit types than
-type variables available. In this case, this is a user error, and a descriptive
-error message is generated.
-
-After this, we split the list of type variables into two sublists; the first
-list with the type variables we will explicitly substitute into (and we use
-the length of our explicit type list to determine this number).
-
-In order to preserve the invariant that a TvSubst should only be applied once,
-we combine the two TvSubsts. In theory, the two type variable substitutions
-should be disjoint, otherwise, there could be unintended behavior. I am not sure
-how they could possibly not be disjoint, but the warning is there for completeness'
-sake.
-
-Finally, we compose two wrappers: wrap, generated normally by instCall, and
-(mkWpTyApps etypes), made out of our explicit types. These two combine into
-a wrapper that wraps the resulting function with all the type information it
-needs. This allows for the explicit type information to propagate down to the
-Desugarer and Core correctly without any issues.
 
 \begin{code}
 doStupidChecks :: TcId

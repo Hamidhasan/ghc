@@ -316,8 +316,7 @@ data HsExpr id
 
   | ELazyPat    (LHsExpr id) -- ~ pattern
 
-                                        -- Explicit type argument; e.g  f @Int x y
-  | ETypeApp    (HsTypeApp id)          -- See Note [Explicit Type App] Hamidhasan
+  | ETypeApp    (HsTypeApp id) -- Explicit type argument; e.g  f @Int x y 
 
 ---------------------------------------
   -- Finally, HsWrap appears only in typechecker output
@@ -379,13 +378,6 @@ whereas that would not be possible using a all to a polymorphic function
 (because you can't call a polymorphic function at an unboxed type).
 
 So we use Nothing to mean "use the old built-in typing rule".
-
-Note [Explicit Type App]
-~~~~~~~~~~~~~~~~~~~~~~~~
-Explicit type application allows a programmer to explicitly declare the type
-of a polymorphic function's type variables, rather then letting them be inferred
-by the type checker. This is currently a work-in-progress feature, authored by
-Hamidhasan Ahmed.
 
 \begin{code}
 instance OutputableBndr id => Outputable (HsExpr id) where

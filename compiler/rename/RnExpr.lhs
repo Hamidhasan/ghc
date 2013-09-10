@@ -340,13 +340,16 @@ These three are pattern syntax appearing in expressions.
 Since all the symbols are reservedops we can simply reject them.
 We return a (bogus) EWildPat in each case.
 
+Since an as-pattern shares the '@' syntax with type application,
+we suggest turning on the extension if we encounter one in
+addition to the usual error.
 \begin{code}
 rnExpr e@EWildPat      = do { holes <- xoptM Opt_TypeHoles
                             ; if holes
                                 then return (hsHoleExpr, emptyFVs)
                                 else patSynErr e
-                            }
-rnExpr e@(EAsPat {}) = patSynErr e  
+                            }                         
+rnExpr e@(EAsPat {}) =   etypeOffErr e  
 rnExpr e@(EViewPat {}) = patSynErr e
 rnExpr e@(ELazyPat {}) = patSynErr e
 \end{code}

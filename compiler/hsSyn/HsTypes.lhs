@@ -274,15 +274,14 @@ type HsTyOp name = (HsTyWrapper, name)
 mkHsOpTy :: LHsType name -> Located name -> LHsType name -> HsType name
 mkHsOpTy ty1 op ty2 = HsOpTy ty1 (WpKiApps [], op) ty2
 
--- Hamidhasan TODO: MAke this a Note. Explicit Type Application datatype convenient for threading
 data HsTypeApp name 
   = Unknown
   | ExplicitTy (LHsType name) (Maybe Type)
 --   ExplicitKi (LHsKind name) (Maybe Kind)   Very easy to extend this for kind application         
   deriving (Data, Typeable)
--- The explicit type has a maybe associated with it. This is because we
--- need to first check the LHsType. TypeApp will always be first created with
--- "Nothing", then kind-checked into a valid "Just type"
+-- The explicit type has a maybe associated with it. This represents the
+-- kind-checked "LHsType", and is carried around so that it
+-- does not to be re-checked if it is re-used.
 
 \end{code}
 

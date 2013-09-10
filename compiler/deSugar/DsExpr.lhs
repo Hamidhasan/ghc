@@ -337,8 +337,6 @@ dsExpr (HsIf mb_fun guard_expr then_expr else_expr)
        ; b2 <- dsLExpr else_expr
        ; case mb_fun of
            Just fun -> do { core_fun <- dsExpr fun
-                         -- ; warnDs $ text "Desugaring HsIf...mb_fun:" <+> ppr mb_fun <+> 
-                         --            text "core_fun:" <+> ppr core_fun
                           ; return (mkCoreApps core_fun [pred,b1,b2]) }
            Nothing  -> return $ mkIfThenElse pred b1 b2 }
 

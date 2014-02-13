@@ -531,12 +531,59 @@ heapStackCheckGen stk_hwm mb_bytes
        lretry <- newLabelC
        emitLabel lretry
        call <- mkCall generic_gc (GC, GC) [] [] updfr_sz []
-       do_checks stk_hwm False  mb_bytes (call <*> mkBranch lretry)
+       do_checks stk_hwm False mb_bytes (call <*> mkBranch lretry)
+
+-- Note [Single stack check]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~
+-- When compiling a function we can determine how much stack space it
+-- will use. We therefore need to perform only a single stack check at
+-- the beginning of a function to see if we have enough stack space.
+--
+-- The check boils down to comparing Sp-N with SpLim, where N is the
+-- amount of stack space needed (see Note [Stack usage] below).  *BUT*
+-- at this stage of the pipeline we are not supposed to refer to Sp
+-- itself, because the stack is not yet manifest, so we don't quite
+-- know where Sp pointing.
+
+-- So instead of referring directly to Sp - as we used to do in the
+-- past - the code generator uses (old + 0) in the stack check. That
+-- is the address of the first word of the old area, so if we add N
+-- we'll get the address of highest used word.
+--
+-- This makes the check robust.  For example, while we need to perform
+-- only one stack check for each function, we could in theory place
+-- more stack checks later in the function. They would be redundant,
+-- but not incorrect (in a sense that they should not change program
+-- behaviour). We need to make sure however that a stack check
+-- inserted after incrementing the stack pointer checks for a
+-- respectively smaller stack space. This would not be the case if the
+-- code generator produced direct references to Sp. By referencing
+-- (old + 0) we make sure that we always check for a correct amount of
+-- stack: when converting (old + 0) to Sp the stack layout phase takes
+-- into account changes already made to stack pointer. The idea for
+-- this change came from observations made while debugging #8275.
+
+-- Note [Stack usage]
+-- ~~~~~~~~~~~~~~~~~~
+-- At the moment we convert from STG to Cmm we don't know N, the
+-- number of bytes of stack that the function will use, so we use a
+-- special late-bound CmmLit, namely
+--       CmmHighStackMark
+-- to stand for the number of bytes needed. When the stack is made
+-- manifest, the number of bytes needed is calculated, and used to
+-- replace occurrences of CmmHighStackMark
+--
+-- The (Maybe CmmExpr) passed to do_checks is usually
+--     Just (CmmLit CmmHighStackMark)
+-- but can also (in certain hand-written RTS functions)
+--     Just (CmmLit 8)  or some other fixed valuet
+-- If it is Nothing, we don't generate a stack check at all.
 
 do_checks :: Maybe CmmExpr    -- Should we check the stack?
-          -> Bool       -- Should we check for preemption?
+                              -- See Note [Stack usage]
+          -> Bool             -- Should we check for preemption?
           -> Maybe CmmExpr    -- Heap headroom (bytes)
-          -> CmmAGraph  -- What to do on failure
+          -> CmmAGraph        -- What to do on failure
           -> FCode ()
 do_checks mb_stk_hwm checkYield mb_alloc_lit do_gc = do
   dflags <- getDynFlags
@@ -547,11 +594,13 @@ do_checks mb_stk_hwm checkYield mb_alloc_lit do_gc = do
 
     bump_hp   = cmmOffsetExprB dflags (CmmReg hpReg) alloc_lit
 
-    -- Sp overflow if (Sp - CmmHighStack < SpLim)
+    -- Sp overflow if ((old + 0) - CmmHighStack < SpLim)
+    -- At the beginning of a function old + 0 = Sp
+    -- See Note [Single stack check]
     sp_oflo sp_hwm =
          CmmMachOp (mo_wordULt dflags)
                   [CmmMachOp (MO_Sub (typeWidth (cmmRegType dflags spReg)))
-                             [CmmReg spReg, sp_hwm],
+                             [CmmStackSlot Old 0, sp_hwm],
                    CmmReg spLimReg]
 
     -- Hp overflow if (Hp > HpLim)
@@ -566,13 +615,22 @@ do_checks mb_stk_hwm checkYield mb_alloc_lit do_gc = do
     Nothing -> return ()
     Just stk_hwm -> tickyStackCheck >> (emit =<< mkCmmIfGoto (sp_oflo stk_hwm) gc_id)
 
+  -- Emit new label that might potentially be a header
+  -- of a self-recursive tail call.
+  -- See Note [Self-recursive loop header].
+  self_loop_info <- getSelfLoop
+  case self_loop_info of
+    Just (_, loop_header_id, _)
+        | checkYield && isJust mb_stk_hwm -> emitLabel loop_header_id
+    _otherwise -> return ()
+
   if (isJust mb_alloc_lit)
     then do
      tickyHeapCheck
      emitAssign hpReg bump_hp
      emit =<< mkCmmIfThen hp_oflo (alloc_n <*> mkBranch gc_id)
     else do
-      when (not (gopt Opt_OmitYields dflags) && checkYield) $ do
+      when (checkYield && not (gopt Opt_OmitYields dflags)) $ do
          -- Yielding if HpLim == 0
          let yielding = CmmMachOp (mo_wordEq dflags)
                                   [CmmReg (CmmGlobal HpLim),
@@ -588,3 +646,27 @@ do_checks mb_stk_hwm checkYield mb_alloc_lit do_gc = do
                 -- stack check succeeds.  Otherwise we might end up
                 -- with slop at the end of the current block, which can
                 -- confuse the LDV profiler.
+
+-- Note [Self-recursive loop header]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+--
+-- Self-recursive loop header is required by loopification optimization (See
+-- Note [Self-recursive tail calls] in StgCmmExpr). We emit it if:
+--
+--  1. There is information about self-loop in the FCode environment. We don't
+--     check the binder (first component of the self_loop_info) because we are
+--     certain that if the self-loop info is present then we are compiling the
+--     binder body. Reason: the only possible way to get here with the
+--     self_loop_info present is from closureCodeBody.
+--
+--  2. checkYield && isJust mb_stk_hwm. checkYield tells us that it is possible
+--     to preempt the heap check (see #367 for motivation behind this check). It
+--     is True for heap checks placed at the entry to a function and
+--     let-no-escape heap checks but false for other heap checks (eg. in case
+--     alternatives or created from hand-written high-level Cmm). The second
+--     check (isJust mb_stk_hwm) is true for heap checks at the entry to a
+--     function and some heap checks created in hand-written Cmm. Otherwise it
+--     is Nothing. In other words the only situation when both conditions are
+--     true is when compiling stack and heap checks at the entry to a
+--     function. This is the only situation when we want to emit a self-loop
+--     label.

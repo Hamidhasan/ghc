@@ -10,7 +10,7 @@
 -- The above warning supression flag is a temporary kludge.
 -- While working on this module you are encouraged to remove it and
 -- detab the module (please do the detabbing in a separate patch). See
---     http://hackage.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
+--     http://ghc.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
 -- for details
 
 -- | CoreSyn holds all the main data types for use by for the Glasgow Haskell Compiler midsection
@@ -44,7 +44,7 @@ module CoreSyn (
         isValArg, isTypeArg, isTyCoArg, valArgCount, valBndrCount,
         isRuntimeArg, isRuntimeVar,
 
-        tickishCounts, tickishScoped, tickishIsCode, mkNoTick, mkNoScope,
+        tickishCounts, tickishScoped, tickishIsCode, mkNoCount, mkNoScope,
         tickishCanSplit,
 
         -- * Unfolding data types
@@ -388,13 +388,13 @@ is fine, and has type Bool.  This is one reason we need a type on
 the case expression: if the alternatives are empty we can't get the type
 from the alternatives!  I'll write this
    case (error Int "Hello") of Bool {}
-with the return type just before the alterantives.
+with the return type just before the alternatives.
 
 Here's another example:
   data T
   f :: T -> Bool
   f = \(x:t). case x of Bool {}
-Since T has no data constructors, the case alterantives are of course
+Since T has no data constructors, the case alternatives are of course
 empty.  However note that 'x' is not bound to a visbily-bottom value;
 it's the *type* that tells us it's going to diverge.  Its a bit of a
 degnerate situation but we do NOT want to replace
@@ -475,9 +475,10 @@ data Tickish id =
   deriving (Eq, Ord, Data, Typeable)
 
 
--- | A "tick" note is one that counts evaluations in some way.  We
--- cannot discard a tick, and the compiler should preserve the number
--- of ticks as far as possible.
+-- | A "counting tick" (where tickishCounts is True) is one that
+-- counts evaluations in some way.  We cannot discard a counting tick,
+-- and the compiler should preserve the number of counting ticks as
+-- far as possible.
 --
 -- However, we still allow the simplifier to increase or decrease
 -- sharing, so in practice the actual number of ticks may vary, except
@@ -496,15 +497,15 @@ tickishScoped Breakpoint{} = True
    -- stacks, but also this helps prevent the simplifier from moving
    -- breakpoints around and changing their result type (see #1531).
 
-mkNoTick :: Tickish id -> Tickish id
-mkNoTick n@ProfNote{} = n {profNoteCount = False}
-mkNoTick Breakpoint{} = panic "mkNoTick: Breakpoint" -- cannot split a BP
-mkNoTick t = t
+mkNoCount :: Tickish id -> Tickish id
+mkNoCount n@ProfNote{} = n {profNoteCount = False}
+mkNoCount Breakpoint{} = panic "mkNoCount: Breakpoint" -- cannot split a BP
+mkNoCount HpcTick{}    = panic "mkNoCount: HpcTick"
 
 mkNoScope :: Tickish id -> Tickish id
 mkNoScope n@ProfNote{} = n {profNoteScope = False}
 mkNoScope Breakpoint{} = panic "mkNoScope: Breakpoint" -- cannot split a BP
-mkNoScope t = t
+mkNoScope HpcTick{}    = panic "mkNoScope: HpcTick"
 
 -- | Return True if this source annotation compiles to some code, or will
 -- disappear before the backend.
@@ -512,9 +513,10 @@ tickishIsCode :: Tickish id -> Bool
 tickishIsCode _tickish = True  -- all of them for now
 
 -- | Return True if this Tick can be split into (tick,scope) parts with
--- 'mkNoScope' and 'mkNoTick' respectively.
+-- 'mkNoScope' and 'mkNoCount' respectively.
 tickishCanSplit :: Tickish Id -> Bool
 tickishCanSplit Breakpoint{} = False
+tickishCanSplit HpcTick{}    = False
 tickishCanSplit _ = True
 \end{code}
 
@@ -990,7 +992,7 @@ See also Note [Inlining an InlineRule] in CoreUnfold.
 Note [OccInfo in unfoldings and rules]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 In unfoldings and rules, we guarantee that the template is occ-analysed,
-so that the occurence info on the binders is correct.  This is important,
+so that the occurrence info on the binders is correct.  This is important,
 because the Simplifier does not re-analyse the template when using it. If
 the occurrence info is wrong
   - We may get more simpifier iterations than necessary, because

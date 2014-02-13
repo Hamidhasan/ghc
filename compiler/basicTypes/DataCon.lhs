@@ -9,7 +9,7 @@
 -- The above warning supression flag is a temporary kludge.
 -- While working on this module you are encouraged to remove it and
 -- detab the module (please do the detabbing in a separate patch). See
---     http://hackage.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
+--     http://ghc.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
 -- for details
 
 module DataCon (
@@ -38,6 +38,8 @@ module DataCon (
 	dataConRepStrictness, dataConRepBangs, dataConBoxer,
 
 	splitDataProductType_maybe,
+
+        tyConsOfTyCon,
 
 	-- ** Predicates on DataCons
 	isNullarySrcDataCon, isNullaryRepDataCon, isTupleDataCon, isUnboxedTupleCon,
@@ -70,6 +72,7 @@ import BasicTypes
 import FastString
 import Module
 import VarEnv
+import NameEnv
 
 import qualified Data.Data as Data
 import qualified Data.Typeable
@@ -996,6 +999,9 @@ dataConCannotMatch tys con
 %*									*
 %************************************************************************
 
+buildAlgTyCon is here because it is called from TysWiredIn, which in turn
+depends on DataCon, but not on BuildTyCl.
+
 \begin{code}
 buildAlgTyCon :: Name 
               -> [TyVar]               -- ^ Kind variables and type variables
@@ -1034,7 +1040,7 @@ buildAlgTyCon tc_name ktvs roles cType stupid_theta rhs
 
 These two 'promoted..' functions are here because
  * They belong together
- * 'prmoteDataCon' depends on DataCon stuff
+ * 'promoteDataCon' depends on DataCon stuff
 
 \begin{code}
 promoteDataCon :: DataCon -> TyCon
@@ -1125,4 +1131,15 @@ splitDataProductType_maybe ty
   = Just (tycon, ty_args, con, dataConInstArgTys con ty_args)
   | otherwise
   = Nothing
+
+-- | All type constructors used in the definition of this type constructor,
+--   recursively. This is used to find out all the type constructors whose data
+--   constructors need to be in scope to be allowed to safely coerce under this
+--   type constructor in Safe Haskell mode.
+tyConsOfTyCon :: TyCon -> [TyCon]
+tyConsOfTyCon tc = nameEnvElts (add tc emptyNameEnv)
+  where
+     go env tc = foldr add env (tyConDataCons tc >>= dataConOrigArgTys >>= tyConsOfType)
+     add tc env | tyConName tc `elemNameEnv` env = env
+                | otherwise = go (extendNameEnv env (tyConName tc) tc) tc
 \end{code}

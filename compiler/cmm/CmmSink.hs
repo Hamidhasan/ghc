@@ -3,8 +3,6 @@ module CmmSink (
      cmmSink
   ) where
 
-import CodeGen.Platform (callerSaves)
-
 import Cmm
 import CmmOpt
 import BlockId
@@ -110,6 +108,7 @@ import qualified Data.Set as Set
 --
 -- a nice loop, but we didn't eliminate the silly assignment at the end.
 -- See Note [dependent assignments], which would probably fix this.
+-- This is #8336 on Trac.
 --
 -- -----------
 -- (2) From stg_atomically_frame in PrimOps.cmm
@@ -172,7 +171,7 @@ cmmSink dflags graph = ofBlockList (g_entry graph) $ sink mapEmpty $ blocks
 
       -- Now sink and inline in this block
       (middle', assigs) = walk dflags ann_middles (mapFindWithDefault [] lbl sunk)
-      fold_last = constantFold dflags last
+      fold_last = constantFoldNode dflags last
       (final_last, assigs') = tryToInline dflags live fold_last assigs
 
       -- We cannot sink into join points (successors with more than
@@ -220,18 +219,26 @@ cmmSink dflags graph = ofBlockList (g_entry graph) $ sink mapEmpty $ blocks
 
 -- small: an expression we don't mind duplicating
 isSmall :: CmmExpr -> Bool
-isSmall (CmmReg (CmmLocal _)) = True  -- not globals, we want to coalesce them instead
+isSmall (CmmReg (CmmLocal _)) = True  -- not globals, we want to coalesce them instead* See below
 isSmall (CmmLit _) = True
 isSmall (CmmMachOp (MO_Add _) [x,y]) = isTrivial x && isTrivial y
 isSmall (CmmRegOff (CmmLocal _) _) = True
 isSmall _ = False
+
+Coalesce global registers? What does that mean? We observed no decrease
+in performance comming from inlining of global registers, hence we do it now
+(see isTrivial function). Ideally we'd like to measure performance using
+some tool like perf or VTune and make decisions what to inline based on that.
 -}
 
+--
+-- We allow duplication of trivial expressions: registers (both local and
+-- global) and literals.
+--
 isTrivial :: CmmExpr -> Bool
-isTrivial (CmmReg (CmmLocal _)) = True
--- isTrivial (CmmLit _) = True  -- Disabled because it used to make thing worse.
-                                -- Needs further investigation
-isTrivial _ = False
+isTrivial (CmmReg _) = True
+isTrivial (CmmLit _) = True
+isTrivial _          = False
 
 --
 -- annotate each node with the set of registers live *after* the node
@@ -288,8 +295,8 @@ walk :: DynFlags
 
      -> Assignments                     -- The current list of
                                         -- assignments we are sinking.
-                                        -- Later assignments may refer
-                                        -- to earlier ones.
+                                        -- Earlier assignments may refer
+                                        -- to later ones.
 
      -> ( Block CmmNode O O             -- The new block
         , Assignments                   -- Assignments to sink further
@@ -299,11 +306,12 @@ walk dflags nodes assigs = go nodes emptyBlock assigs
  where
    go []               block as = (block, as)
    go ((live,node):ns) block as
-    | shouldDiscard node live           = go ns block as -- discard dead assignment
+    | shouldDiscard node live           = go ns block as
+       -- discard dead assignment
     | Just a <- shouldSink dflags node2 = go ns block (a : as1)
     | otherwise                         = go ns block' as'
     where
-      node1 = constantFold dflags node
+      node1 = constantFoldNode dflags node
 
       (node2, as1) = tryToInline dflags live node1 as
 
@@ -312,12 +320,6 @@ walk dflags nodes assigs = go nodes emptyBlock assigs
 
       block' = foldl blockSnoc block dropped `blockSnoc` node2
 
-
-constantFold :: DynFlags -> CmmNode e x -> CmmNode e x
-constantFold dflags node = mapExpDeep f node
-  where f (CmmMachOp op args) = cmmMachOpFold dflags op args
-        f (CmmRegOff r 0) = CmmReg r
-        f e = e
 
 --
 -- Heuristic to decide whether to pick up and sink an assignment
@@ -397,6 +399,7 @@ tryToInline dflags live node assigs = go usages node [] assigs
 
   go usages node skipped (a@(l,rhs,_) : rest)
    | cannot_inline           = dont_inline
+   | occurs_none             = discard  -- Note [discard during inlining]
    | occurs_once             = inline_and_discard
    | isTrivial rhs           = inline_and_keep
    | otherwise               = dont_inline
@@ -404,12 +407,15 @@ tryToInline dflags live node assigs = go usages node [] assigs
         inline_and_discard = go usages' inl_node skipped rest
           where usages' = foldLocalRegsUsed dflags addUsage usages rhs
 
+        discard = go usages node skipped rest
+
         dont_inline        = keep node     -- don't inline the assignment, keep it
         inline_and_keep    = keep inl_node --       inline the assignment, keep it
 
         keep node' = (final_node, a : rest')
           where (final_node, rest') = go usages' node' (l:skipped) rest
-                usages' = foldLocalRegsUsed dflags (\m r -> addToUFM m r 2) usages rhs
+                usages' = foldLocalRegsUsed dflags (\m r -> addToUFM m r 2)
+                                            usages rhs
                 -- we must not inline anything that is mentioned in the RHS
                 -- of a binding that we have already skipped, so we set the
                 -- usages of the regs on the RHS to 2.
@@ -418,10 +424,14 @@ tryToInline dflags live node assigs = go usages node [] assigs
                         || l `elem` skipped
                         || not (okToInline dflags rhs node)
 
-        occurs_once = not (l `elemRegSet` live)
-                      && lookupUFM usages l == Just 1
+        l_usages = lookupUFM usages l
+        l_live   = l `elemRegSet` live
 
-        inl_node = mapExpDeep inline node   -- mapExpDeep is where the inlining actually takes place!
+        occurs_once = not l_live && l_usages == Just 1
+        occurs_none = not l_live && l_usages == Nothing
+
+        inl_node = mapExpDeep inline node
+                   -- mapExpDeep is where the inlining actually takes place!
            where inline (CmmReg    (CmmLocal l'))     | l == l' = rhs
                  inline (CmmRegOff (CmmLocal l') off) | l == l'
                     = cmmOffset dflags rhs off
@@ -430,6 +440,7 @@ tryToInline dflags live node assigs = go usages node [] assigs
                  inline other = other
 
 -- Note [dependent assignments]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 --
 -- If our assignment list looks like
 --
@@ -457,6 +468,22 @@ tryToInline dflags live node assigs = go usages node [] assigs
 -- trivial rhs's).  But of course we can't, because y is equal to e,
 -- not z.
 
+-- Note [discard during inlining]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- Opportunities to discard assignments sometimes appear after we've
+-- done some inlining.  Here's an example:
+--
+--      x = R1;
+--      y = P64[x + 7];
+--      z = P64[x + 15];
+--      /* z is dead */
+--      R1 = y & (-8);
+--
+-- The x assignment is trivial, so we inline it in the RHS of y, and
+-- keep both x and y.  z gets dropped because it is dead, then we
+-- inline y, and we have a dead assignment to x.  If we don't notice
+-- that x is dead in tryToInline, we end up retaining it.
+
 addUsage :: UniqFM Int -> LocalReg -> UniqFM Int
 addUsage m r = addToUFM_C (+) m r 1
 
@@ -474,7 +501,8 @@ regsUsedIn ls e = wrapRecExpf f e False
 -- nor the NCG can do it.  See Note [Register parameter passing]
 -- See also StgCmmForeign:load_args_into_temps.
 okToInline :: DynFlags -> CmmExpr -> CmmNode e x -> Bool
-okToInline dflags expr CmmUnsafeForeignCall{} = not (anyCallerSavesRegs dflags expr)
+okToInline dflags expr node@(CmmUnsafeForeignCall{}) =
+    not (globalRegistersConflict dflags expr node)
 okToInline _ _ _ = True
 
 -- -----------------------------------------------------------------------------
@@ -487,22 +515,22 @@ okToInline _ _ _ = True
 conflicts :: DynFlags -> Assignment -> CmmNode O x -> Bool
 conflicts dflags (r, rhs, addr) node
 
-  -- (1) an assignment to a register conflicts with a use of the register
-  | CmmAssign reg  _ <- node, reg `regUsedIn` rhs                 = True
+  -- (1) node defines registers used by rhs of assignment. This catches
+  -- assignmnets and all three kinds of calls. See Note [Sinking and calls]
+  | globalRegistersConflict dflags rhs node                       = True
+  | localRegistersConflict  dflags rhs node                       = True
+
+  -- (2) node uses register defined by assignment
   | foldRegsUsed dflags (\b r' -> r == r' || b) False node        = True
 
-  -- (2) a store to an address conflicts with a read of the same memory
+  -- (3) a store to an address conflicts with a read of the same memory
   | CmmStore addr' e <- node
   , memConflicts addr (loadAddr dflags addr' (cmmExprWidth dflags e)) = True
 
-  -- (3) an assignment to Hp/Sp conflicts with a heap/stack read respectively
+  -- (4) an assignment to Hp/Sp conflicts with a heap/stack read respectively
   | HeapMem    <- addr, CmmAssign (CmmGlobal Hp) _ <- node        = True
   | StackMem   <- addr, CmmAssign (CmmGlobal Sp) _ <- node        = True
   | SpMem{}    <- addr, CmmAssign (CmmGlobal Sp) _ <- node        = True
-
-  -- (4) assignments that read caller-saves GlobalRegs conflict with a
-  -- foreign call.  See Note [Unsafe foreign calls clobber caller-save registers]
-  | CmmUnsafeForeignCall{} <- node, anyCallerSavesRegs dflags rhs = True
 
   -- (5) foreign calls clobber heap: see Note [Foreign calls clobber heap]
   | CmmUnsafeForeignCall{} <- node, memConflicts addr AnyMem      = True
@@ -513,12 +541,57 @@ conflicts dflags (r, rhs, addr) node
   -- (7) otherwise, no conflict
   | otherwise = False
 
+-- Returns True if node defines any global registers that are used in the
+-- Cmm expression
+globalRegistersConflict :: DynFlags -> CmmExpr -> CmmNode e x -> Bool
+globalRegistersConflict dflags expr node =
+    foldRegsDefd dflags (\b r -> b || (CmmGlobal r) `regUsedIn` expr) False node
 
-anyCallerSavesRegs :: DynFlags -> CmmExpr -> Bool
-anyCallerSavesRegs dflags e = wrapRecExpf f e False
-  where f (CmmReg (CmmGlobal r)) _
-         | callerSaves (targetPlatform dflags) r = True
-        f _ z = z
+-- Returns True if node defines any local registers that are used in the
+-- Cmm expression
+localRegistersConflict :: DynFlags -> CmmExpr -> CmmNode e x -> Bool
+localRegistersConflict dflags expr node =
+    foldRegsDefd dflags (\b r -> b || (CmmLocal  r) `regUsedIn` expr) False node
+
+-- Note [Sinking and calls]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~
+--
+-- We have three kinds of calls: normal (CmmCall), safe foreign (CmmForeignCall)
+-- and unsafe foreign (CmmUnsafeForeignCall). We perform sinking pass after
+-- stack layout (see Note [Sinking after stack layout]) which leads to two
+-- invariants related to calls:
+--
+--   a) during stack layout phase all safe foreign calls are turned into
+--      unsafe foreign calls (see Note [Lower safe foreign calls]). This
+--      means that we will never encounter CmmForeignCall node when running
+--      sinking after stack layout
+--
+--   b) stack layout saves all variables live across a call on the stack
+--      just before making a call (remember we are not sinking assignments to
+--      stack):
+--
+--       L1:
+--          x = R1
+--          P64[Sp - 16] = L2
+--          P64[Sp - 8]  = x
+--          Sp = Sp - 16
+--          call f() returns L2
+--       L2:
+--
+--      We will attempt to sink { x = R1 } but we will detect conflict with
+--      { P64[Sp - 8]  = x } and hence we will drop { x = R1 } without even
+--      checking whether it conflicts with { call f() }. In this way we will
+--      never need to check any assignment conflicts with CmmCall. Remember
+--      that we still need to check for potential memory conflicts.
+--
+-- So the result is that we only need to worry about CmmUnsafeForeignCall nodes
+-- when checking conflicts (see Note [Unsafe foreign calls clobber caller-save registers]).
+-- This assumption holds only when we do sinking after stack layout. If we run
+-- it before stack layout we need to check for possible conflicts with all three
+-- kinds of calls. Our `conflicts` function does that by using a generic
+-- foldRegsDefd and foldRegsUsed functions defined in DefinerOfRegs and
+-- UserOfRegs typeclasses.
+--
 
 -- An abstraction of memory read or written.
 data AbsMem

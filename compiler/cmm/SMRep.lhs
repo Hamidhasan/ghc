@@ -90,10 +90,6 @@ newtype StgWord = StgWord Word64
 #if __GLASGOW_HASKELL__ < 706
               Num,
 #endif
-
-#if __GLASGOW_HASKELL__ <= 706
-              Array.IArray Array.UArray,
-#endif
               Bits)
 
 fromStgWord :: StgWord -> Integer
@@ -137,31 +133,6 @@ hALF_WORD_SIZE :: DynFlags -> ByteOff
 hALF_WORD_SIZE dflags = platformWordSize (targetPlatform dflags) `shiftR` 1
 hALF_WORD_SIZE_IN_BITS :: DynFlags -> Int
 hALF_WORD_SIZE_IN_BITS dflags = platformWordSize (targetPlatform dflags) `shiftL` 2
-\end{code}
-
-%************************************************************************
-%*                                                                      *
-                Immutable arrays of StgWords
-%*                                                                      *
-%************************************************************************
-
-\begin{code}
-
-#if __GLASGOW_HASKELL__ > 706
--- TODO: Improve with newtype coercions!
-
-newtype UArrayStgWord i = UArrayStgWord (Array.UArray i Word64)
-
-listArray :: Ix i => (i, i) -> [StgWord] -> UArrayStgWord i
-listArray (i,j) words
-  = UArrayStgWord $ Array.listArray (i,j) (map unStgWord words)
-  where unStgWord (StgWord w64) = w64
-
-toByteArray :: UArrayStgWord i -> ByteArray#
-toByteArray (UArrayStgWord (Array.UArray _ _ _ b)) = b
-
-#endif
-
 \end{code}
 
 %************************************************************************

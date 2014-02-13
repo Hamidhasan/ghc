@@ -13,7 +13,7 @@ mutable type variables
 -- The above warning supression flag is a temporary kludge.
 -- While working on this module you are encouraged to remove it and
 -- detab the module (please do the detabbing in a separate patch). See
---     http://hackage.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
+--     http://ghc.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
 -- for details
 
 module TcMType (
@@ -36,7 +36,7 @@ module TcMType (
   newEvVar, newEvVars, newEq, newDict,
   newWantedEvVar, newWantedEvVars,
   newTcEvBinds, addTcEvBind,
-  newFlatWanteds,
+  newFlatWanted, newFlatWanteds,
 
   --------------------------------
   -- Instantiation
@@ -163,16 +163,17 @@ predTypeOccName ty = case classifyPredType ty of
 *********************************************************************************
 
 \begin{code}
+newFlatWanted :: CtOrigin -> PredType -> TcM Ct
+newFlatWanted orig pty
+  = do loc <- getCtLoc orig
+       v <- newWantedEvVar pty
+       return $ mkNonCanonical $
+            CtWanted { ctev_evar = v
+                     , ctev_pred = pty
+                     , ctev_loc = loc }
+
 newFlatWanteds :: CtOrigin -> ThetaType -> TcM [Ct]
-newFlatWanteds orig theta
-  = do { loc <- getCtLoc orig
-       ; mapM (inst_to_wanted loc) theta }
-  where 
-    inst_to_wanted loc pty 
-          = do { v <- newWantedEvVar pty 
-               ; return $ mkNonCanonical loc $
-                 CtWanted { ctev_evar = v
-                          , ctev_pred = pty } }
+newFlatWanteds orig = mapM (newFlatWanted orig)
 \end{code}
 
 %************************************************************************
@@ -545,7 +546,7 @@ zonkQuantifiedTyVar :: TcTyVar -> TcM TcTyVar
 -- default their kind (e.g. from OpenTypeKind to TypeKind)
 -- 			-- see notes with Kind.defaultKind
 -- The meta tyvar is updated to point to the new skolem TyVar.  Now any 
--- bound occurences of the original type variable will get zonked to 
+-- bound occurrences of the original type variable will get zonked to 
 -- the immutable version.
 --
 -- We leave skolem TyVars alone; they are immutable.
@@ -805,13 +806,13 @@ zonkFlats binds_var untch cts
         isTouchableMetaTyVar untch tv
       , not (isSigTyVar tv) || isTyVarTy ty_lhs     -- Never unify a SigTyVar with a non-tyvar
       , typeKind ty_lhs `tcIsSubKind` tyVarKind tv  -- c.f. TcInteract.trySpontaneousEqOneWay
-      , not (tv `elemVarSet` tyVarsOfType ty_lhs)
-      = ASSERT2( isWantedCt orig_ct, ppr orig_ct )
-        ASSERT2( case tcSplitTyConApp_maybe ty_lhs of { Just (tc,_) -> isSynFamilyTyCon tc; _ -> False }, ppr orig_ct )
+      , not (tv `elemVarSet` tyVarsOfType ty_lhs)   -- Do not construct an infinite type
+      = ASSERT2( case tcSplitTyConApp_maybe ty_lhs of { Just (tc,_) -> isSynFamilyTyCon tc; _ -> False }, ppr orig_ct )
         do { writeMetaTyVar tv ty_lhs
-           ; let evterm = EvCoercion (mkTcReflCo ty_lhs)
+           ; let evterm = EvCoercion (mkTcNomReflCo ty_lhs)
                  evvar  = ctev_evar (cc_ev zct)
-           ; addTcEvBind binds_var evvar evterm
+           ; when (isWantedCt orig_ct) $         -- Can be derived (Trac #8129)
+             addTcEvBind binds_var evvar evterm
            ; traceTc "zonkFlats/unflattening" $
              vcat [ text "zct = " <+> ppr zct,
                     text "binds_var = " <+> ppr binds_var ]
@@ -836,7 +837,7 @@ constraint solving, cannot produce any more interactions in the
 constraint solver so it is safe to do it as the very very last step.
 
 We choose therefore to do it during zonking, in the function
-zonkFlats. This is in analgoy to the zonking of given flatten skolems
+zonkFlats. This is in analogy to the zonking of given "flatten skolems"
 which are eliminated in favor of the underlying type that they are
 equal to.
 
@@ -874,8 +875,7 @@ zonkCt ct@(CHoleCan { cc_ev = ev })
        ; return $ ct { cc_ev = ev' } }
 zonkCt ct
   = do { fl' <- zonkCtEvidence (cc_ev ct)
-       ; return (CNonCanonical { cc_ev = fl'
-                               , cc_loc = cc_loc ct }) }
+       ; return (mkNonCanonical fl') }
 
 zonkCtEvidence :: CtEvidence -> TcM CtEvidence
 zonkCtEvidence ctev@(CtGiven { ctev_pred = pred }) 

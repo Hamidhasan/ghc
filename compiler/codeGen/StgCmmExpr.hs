@@ -432,17 +432,25 @@ cgCase scrut bndr alt_type alts
 
        ; mb_cc <- maybeSaveCostCentre simple_scrut
 
-       -- if do_gc then our sequel will be ReturnTo
-       --   - generate code for the sequel now
-       --   - pass info about the sequel to cgAlts for use in the heap check
-       -- else sequel will be AssignTo
-
-       ; ret_kind <- withSequel (AssignTo alt_regs False) (cgExpr scrut)
+       ; let sequel = AssignTo alt_regs do_gc{- Note [scrut sequel] -}
+       ; ret_kind <- withSequel sequel (cgExpr scrut)
        ; restoreCurrentCostCentre mb_cc
        ; _ <- bindArgsToRegs ret_bndrs
        ; cgAlts (gc_plan,ret_kind) (NonVoid bndr) alt_type alts
        }
 
+
+{-
+Note [scrut sequel]
+
+The job of the scrutinee is to assign its value(s) to alt_regs.
+Additionally, if we plan to do a heap-check in the alternatives (see
+Note [Compiling case expressions]), then we *must* retreat Hp to
+recover any unused heap before passing control to the sequel.  If we
+don't do this, then any unused heap will become slop because the heap
+check will reset the heap usage. Slop in the heap breaks LDV profiling
+(+RTS -hb) which needs to do a linear sweep through the nursery.
+-}
 
 -----------------
 maybeSaveCostCentre :: Bool -> FCode (Maybe LocalReg)
@@ -630,7 +638,7 @@ cgConApp con stg_args
         ; emitReturn [idInfoToAmode idinfo] }
 
 cgIdApp :: Id -> [StgArg] -> FCode ReturnKind
-cgIdApp fun_id [] | isVoidId fun_id = emitReturn []
+cgIdApp fun_id [] | isVoidTy (idType fun_id) = emitReturn []
 cgIdApp fun_id args = do
     dflags         <- getDynFlags
     fun_info       <- getCgIdInfo fun_id
@@ -729,10 +737,16 @@ cgIdApp fun_id args = do
 --
 --   * Whenever we are compiling a function, we set that information to reflect
 --     the fact that function currently being compiled can be jumped to, instead
---     of called. We also have to emit a label to which we will be jumping. Both
---     things are done in closureCodyBody in StgCmmBind.
+--     of called. This is done in closureCodyBody in StgCmmBind.
 --
---   * When we began compilation of another closure we remove the additional
+--   * We also have to emit a label to which we will be jumping. We make sure
+--     that the label is placed after a stack check but before the heap
+--     check. The reason is that making a recursive tail-call does not increase
+--     the stack so we only need to check once. But it may grow the heap, so we
+--     have to repeat the heap check in every self-call. This is done in
+--     do_checks in StgCmmHeap.
+--
+--   * When we begin compilation of another closure we remove the additional
 --     information from the environment. This is done by forkClosureBody
 --     in StgCmmMonad. Other functions that duplicate the environment -
 --     forkLneBody, forkAlts, codeOnly - duplicate that information. In other
@@ -744,7 +758,12 @@ cgIdApp fun_id args = do
 --     recursive tail call when (a) environment stores information about
 --     possible self tail-call; (b) that tail call is to a function currently
 --     being compiled; (c) number of passed arguments is equal to function's
---     arity.
+--     arity. (d) loopification is turned on via -floopification command-line
+--     option.
+--
+--   * Command line option to turn loopification on and off is implemented in
+--     DynFlags.
+--
 
 
 emitEnter :: CmmExpr -> FCode ReturnKind

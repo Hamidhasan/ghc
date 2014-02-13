@@ -13,21 +13,25 @@ free variables.
 -- The above warning supression flag is a temporary kludge.
 -- While working on this module you are encouraged to remove it and
 -- detab the module (please do the detabbing in a separate patch). See
---     http://hackage.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
+--     http://ghc.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
 -- for details
 
 {-# LANGUAGE ScopedTypeVariables #-}
 module RnPat (-- main entry points
-              rnPat, rnPats, rnBindPat,
+              rnPat, rnPats, rnBindPat, rnPatAndThen,
 
               NameMaker, applyNameMaker,     -- a utility for making names:
               localRecNameMaker, topRecNameMaker,  --   sometimes we want to make local names,
                                              --   sometimes we want to make top (qualified) names.
+              isTopRecNameMaker,
 
               rnHsRecFields1, HsRecFieldContext(..),
 
+              -- CpsRn monad
+              CpsRn, liftCps,
+
               -- Literals
-              rnLit, rnOverLit,     
+              rnLit, rnOverLit,
 
              -- Pattern Error messages that are also used elsewhere
              checkTupSize, patSigErr
@@ -36,32 +40,35 @@ module RnPat (-- main entry points
 -- ENH: thin imports to only what is necessary for patterns
 
 import {-# SOURCE #-} RnExpr ( rnLExpr )
-#ifdef GHCI
+import {-# SOURCE #-} RnSplice ( rnSplicePat )
 import {-# SOURCE #-} TcSplice ( runQuasiQuotePat )
-#endif  /* GHCI */
 
 #include "HsVersions.h"
 
 import HsSyn            
 import TcRnMonad
-import TcHsSyn          ( hsOverLitName )
+import TcHsSyn             ( hsOverLitName )
 import RnEnv
 import RnTypes
 import DynFlags
 import PrelNames
+import TyCon               ( tyConName )
+import ConLike
+import DataCon             ( dataConTyCon )
+import TypeRep             ( TyThing(..) )
 import Name
 import NameSet
 import RdrName
 import BasicTypes
 import Util
-import ListSetOps       ( removeDups )
+import ListSetOps          ( removeDups )
 import Outputable
 import SrcLoc
 import FastString
-import Literal          ( inCharRange )
-import TysWiredIn       ( nilDataCon )
-import DataCon          ( dataConName )
-import Control.Monad    ( when )
+import Literal             ( inCharRange )
+import TysWiredIn          ( nilDataCon )
+import DataCon             ( dataConName )
+import Control.Monad       ( when, liftM, ap )
 import Data.Ratio
 \end{code}
 
@@ -98,6 +105,13 @@ newtype CpsRn b = CpsRn { unCpsRn :: forall r. (b -> RnM (r, FreeVars))
                                             -> RnM (r, FreeVars) }
         -- See Note [CpsRn monad]
 
+instance Functor CpsRn where
+    fmap = liftM
+
+instance Applicative CpsRn where
+    pure = return
+    (<*>) = ap
+
 instance Monad CpsRn where
   return x = CpsRn (\k -> k x)
   (CpsRn m) >>= mk = CpsRn (\k -> m (\v -> unCpsRn (mk v) k))
@@ -123,13 +137,14 @@ wrapSrcSpanCps fn (L loc a)
 lookupConCps :: Located RdrName -> CpsRn (Located Name)
 lookupConCps con_rdr 
   = CpsRn (\k -> do { con_name <- lookupLocatedOccRn con_rdr
-                    ; k con_name })
-    -- We do not add the constructor name to the free vars
-    -- See Note [Patterns are not uses]
+                    ; (r, fvs) <- k con_name
+                    ; return (r, addOneFV fvs (unLoc con_name)) })
+    -- We add the constructor name to the free vars
+    -- See Note [Patterns are uses]
 \end{code}
 
-Note [Patterns are not uses]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Note [Patterns are uses]
+~~~~~~~~~~~~~~~~~~~~~~~~
 Consider
   module Foo( f, g ) where
   data T = T1 | T2
@@ -139,9 +154,21 @@ Consider
 
   g _ = T1
 
-Arguaby we should report T2 as unused, even though it appears in a
+Arguably we should report T2 as unused, even though it appears in a
 pattern, because it never occurs in a constructed position.  See
 Trac #7336.
+However, implementing this in the face of pattern synonyms would be
+less straightforward, since given two pattern synonyms
+
+  pattern P1 <- P2
+  pattern P2 <- ()
+
+we need to observe the dependency between P1 and P2 so that type
+checking can be done in the correct order (just like for value
+bindings). Dependencies between bindings is analyzed in the renamer,
+where we don't know yet whether P2 is a constructor or a pattern
+synonym. So for now, we do report conid occurrences in patterns as
+uses.
 
 %*********************************************************
 %*                                                      *
@@ -167,6 +194,10 @@ data NameMaker
 topRecNameMaker :: MiniFixityEnv -> NameMaker
 topRecNameMaker fix_env = LetMk TopLevel fix_env
 
+isTopRecNameMaker :: NameMaker -> Bool
+isTopRecNameMaker (LetMk TopLevel _) = True
+isTopRecNameMaker _ = False
+
 localRecNameMaker :: MiniFixityEnv -> NameMaker
 localRecNameMaker fix_env = LetMk NotTopLevel fix_env 
 
@@ -187,7 +218,7 @@ newPatName :: NameMaker -> Located RdrName -> CpsRn Name
 newPatName (LamMk report_unused) rdr_name
   = CpsRn (\ thing_inside -> 
         do { name <- newLocalBndrRn rdr_name
-           ; (res, fvs) <- bindLocalName name (thing_inside name)
+           ; (res, fvs) <- bindLocalNames [name] (thing_inside name)
            ; when report_unused $ warnUnusedMatches [name] fvs
            ; return (res, name `delFV` fvs) })
 
@@ -196,12 +227,12 @@ newPatName (LetMk is_top fix_env) rdr_name
         do { name <- case is_top of
                        NotTopLevel -> newLocalBndrRn rdr_name
                        TopLevel    -> newTopSrcBinder rdr_name
-           ; bindLocalName name $       -- Do *not* use bindLocalNameFV here
+           ; bindLocalNames [name] $       -- Do *not* use bindLocalNameFV here
                                         -- See Note [View pattern usage]
              addLocalFixities fix_env [name] $
              thing_inside name })
                           
-    -- Note: the bindLocalName is somewhat suspicious
+    -- Note: the bindLocalNames is somewhat suspicious
     --       because it binds a top-level name as a local name.
     --       however, this binding seems to work, and it only exists for
     --       the duration of the patterns and the continuation;
@@ -215,7 +246,7 @@ Consider
   let (r, (r -> x)) = x in ...
 Here the pattern binds 'r', and then uses it *only* in the view pattern.
 We want to "see" this use, and in let-bindings we collect all uses and
-report unused variables at the binding level. So we must use bindLocalName
+report unused variables at the binding level. So we must use bindLocalNames
 here, *not* bindLocalNameFV.  Trac #3943.
 
 %*********************************************************
@@ -410,16 +441,15 @@ rnPatAndThen mk (TuplePat pats boxed _)
        ; pats' <- rnLPatsAndThen mk pats
        ; return (TuplePat pats' boxed placeHolderType) }
 
-#ifndef GHCI
-rnPatAndThen _ p@(QuasiQuotePat {}) 
-  = pprPanic "Can't do QuasiQuotePat without GHCi" (ppr p)
-#else
+rnPatAndThen _ (SplicePat splice)
+  = do { -- XXX How to deal with free variables?
+       ; (pat, _) <- liftCps $ rnSplicePat splice
+       ; return pat }
 rnPatAndThen mk (QuasiQuotePat qq)
   = do { pat <- liftCps $ runQuasiQuotePat qq
          -- Wrap the result of the quasi-quoter in parens so that we don't
          -- lose the outermost location set by runQuasiQuote (#7918) 
        ; rnPatAndThen mk (ParPat pat) }
-#endif  /* GHCI */
 
 rnPatAndThen _ pat = pprPanic "rnLPatAndThen" (ppr pat)
 
@@ -592,9 +622,14 @@ rnHsRecFields1 ctxt mk_arg (HsRecFields { rec_flds = flds, rec_dotdot = dotdot }
     -- That is, the parent of the data constructor.  
     -- That's the parent to use for looking up record fields.
     find_tycon env con 
-      = case lookupGRE_Name env con of
-          [GRE { gre_par = ParentIs p }] -> p
-          gres  -> pprPanic "find_tycon" (ppr con $$ ppr gres)
+      | Just (AConLike (RealDataCon dc)) <- wiredInNameTyThing_maybe con
+      = tyConName (dataConTyCon dc)   -- Special case for [], which is built-in syntax
+                                      -- and not in the GlobalRdrEnv (Trac #8448)
+      | [GRE { gre_par = ParentIs p }] <- lookupGRE_Name env con
+      = p
+
+      | otherwise
+      = pprPanic "find_tycon" (ppr con $$ ppr (lookupGRE_Name env con))
 
     dup_flds :: [[RdrName]]
         -- Each list represents a RdrName that occurred more than once
@@ -607,14 +642,14 @@ getFieldIds flds = map (unLoc . hsRecFieldId) flds
 
 needFlagDotDot :: HsRecFieldContext -> SDoc
 needFlagDotDot ctxt = vcat [ptext (sLit "Illegal `..' in record") <+> pprRFC ctxt,
-                            ptext (sLit "Use -XRecordWildCards to permit this")]
+                            ptext (sLit "Use RecordWildCards to permit this")]
 
 badDotDot :: HsRecFieldContext -> SDoc
 badDotDot ctxt = ptext (sLit "You cannot use `..' in a record") <+> pprRFC ctxt
 
 badPun :: Located RdrName -> SDoc
 badPun fld = vcat [ptext (sLit "Illegal use of punning for field") <+> quotes (ppr fld),
-                   ptext (sLit "Use -XNamedFieldPuns to permit this")]
+                   ptext (sLit "Use NamedFieldPuns to permit this")]
 
 dupFieldErr :: HsRecFieldContext -> [RdrName] -> SDoc
 dupFieldErr ctxt dups
@@ -677,7 +712,7 @@ rnOverLit origLit
 patSigErr :: Outputable a => a -> SDoc
 patSigErr ty
   =  (ptext (sLit "Illegal signature in pattern:") <+> ppr ty)
-        $$ nest 4 (ptext (sLit "Use -XScopedTypeVariables to permit it"))
+        $$ nest 4 (ptext (sLit "Use ScopedTypeVariables to permit it"))
 
 bogusCharError :: Char -> SDoc
 bogusCharError c
@@ -685,5 +720,5 @@ bogusCharError c
 
 badViewPat :: Pat RdrName -> SDoc
 badViewPat pat = vcat [ptext (sLit "Illegal view pattern: ") <+> ppr pat,
-                       ptext (sLit "Use -XViewPatterns to enable view patterns")]
+                       ptext (sLit "Use ViewPatterns to enable view patterns")]
 \end{code}

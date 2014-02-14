@@ -114,10 +114,9 @@ module DynFlags (
         compilerInfo,
 
 #ifdef GHCI
--- Only in stage 2 can we be sure that the RTS
--- exposes the appropriate runtime boolean
         rtsIsProfiled,
 #endif
+        dynamicGhc,
 
 #include "../includes/dist-derivedconstants/header/GHCConstantsHaskellExports.hs"
         bLOCK_SIZE_W,
@@ -128,12 +127,20 @@ module DynFlags (
 
         unsafeGlobalDynFlags, setUnsafeGlobalDynFlags,
 
-        -- * SSE
+        -- * SSE and AVX
+        isSseEnabled,
         isSse2Enabled,
         isSse4_2Enabled,
+        isAvxEnabled,
+        isAvx2Enabled,
+        isAvx512cdEnabled,
+        isAvx512erEnabled,
+        isAvx512fEnabled,
+        isAvx512pfEnabled,
 
-        -- * Linker information
+        -- * Linker/compiler information
         LinkerInfo(..),
+        CompilerInfo(..),
   ) where
 
 #include "HsVersions.h"
@@ -142,6 +149,7 @@ import Platform
 import PlatformConstants
 import Module
 import PackageConfig
+import {-# SOURCE #-} Hooks
 import {-# SOURCE #-} PrelNames ( mAIN )
 import {-# SOURCE #-} Packages (PackageState)
 import DriverPhases     ( Phase(..), phaseInputExt )
@@ -158,6 +166,7 @@ import FastString
 import Outputable
 #ifdef GHCI
 import Foreign.C        ( CInt(..) )
+import System.IO.Unsafe ( unsafeDupablePerformIO )
 #endif
 import {-# SOURCE #-} ErrUtils ( Severity(..), MsgDoc, mkLocMessage )
 
@@ -197,7 +206,7 @@ data DumpFlag
    | Opt_D_dump_cmm_cfg
    | Opt_D_dump_cmm_cbe
    | Opt_D_dump_cmm_proc
-   | Opt_D_dump_cmm_rewrite
+   | Opt_D_dump_cmm_sink
    | Opt_D_dump_cmm_sp
    | Opt_D_dump_cmm_procmap
    | Opt_D_dump_cmm_split
@@ -231,7 +240,9 @@ data DumpFlag
    | Opt_D_dump_spec
    | Opt_D_dump_prep
    | Opt_D_dump_stg
+   | Opt_D_dump_call_arity
    | Opt_D_dump_stranal
+   | Opt_D_dump_strsigs
    | Opt_D_dump_tc
    | Opt_D_dump_types
    | Opt_D_dump_rules
@@ -275,8 +286,10 @@ data GeneralFlag
    | Opt_WarnIsError                    -- -Werror; makes warnings fatal
 
    | Opt_PrintExplicitForalls
+   | Opt_PrintExplicitKinds
 
    -- optimisation opts
+   | Opt_CallArity
    | Opt_Strictness
    | Opt_LateDmdAnal
    | Opt_KillAbsence
@@ -302,6 +315,7 @@ data GeneralFlag
    | Opt_RegsIterative                  -- do iterative coalescing graph coloring register allocation
    | Opt_PedanticBottoms                -- Be picky about how we treat bottom
    | Opt_LlvmTBAA                       -- Use LLVM TBAA infastructure for improving AA (hidden flag)
+   | Opt_LlvmPassVectorsInRegisters     -- Pass SIMD vectors in registers (requires a patched LLVM) (hidden flag)
    | Opt_IrrefutableTuples
    | Opt_CmmSink
    | Opt_CmmElimCommonBlocks
@@ -310,6 +324,7 @@ data GeneralFlag
    | Opt_FunToThunk               -- allow WwLib.mkWorkerArgs to remove all value lambdas
    | Opt_DictsStrict                     -- be strict in argument dictionaries
    | Opt_DmdTxDictSel              -- use a special demand transformer for dictionary selectors
+   | Opt_Loopification                  -- See Note [Self-recursive tail calls]
 
    -- Interface files
    | Opt_IgnoreInterfacePragmas
@@ -433,6 +448,7 @@ data WarningFlag =
    | Opt_WarnUnusedMatches
    | Opt_WarnWarningsDeprecations
    | Opt_WarnDeprecatedFlags
+   | Opt_WarnAMP
    | Opt_WarnDodgyExports
    | Opt_WarnDodgyImports
    | Opt_WarnOrphans
@@ -451,7 +467,7 @@ data WarningFlag =
    | Opt_WarnUnsupportedCallingConventions
    | Opt_WarnUnsupportedLlvmVersion
    | Opt_WarnInlineRuleShadowing
-   | Opt_WarnTypeableInstances
+   | Opt_WarnTypedHoles
    deriving (Eq, Show, Enum)
 
 data Language = Haskell98 | Haskell2010
@@ -567,9 +583,9 @@ data ExtensionFlag
    | Opt_TraditionalRecordSyntax
    | Opt_LambdaCase
    | Opt_MultiWayIf
-   | Opt_TypeHoles
    | Opt_NegativeLiterals
    | Opt_EmptyCase
+   | Opt_PatternSynonyms
    deriving (Eq, Enum, Show)
 
 -- | Contains not only a collection of 'GeneralFlag's but also a plethora of
@@ -586,6 +602,13 @@ data DynFlags = DynFlags {
   shouldDumpSimplPhase  :: Maybe String,
   ruleCheck             :: Maybe String,
   strictnessBefore      :: [Int],       -- ^ Additional demand analysis
+
+  parMakeCount          :: Maybe Int,   -- ^ The number of modules to compile in parallel
+                                        --   in --make mode, where Nothing ==> compile as
+                                        --   many in parallel as there are CPUs.
+
+  enableTimeStats       :: Bool,        -- ^ Enable RTS timing statistics?
+  ghcHeapSize           :: Maybe Int,   -- ^ The heap size to set.
 
   maxRelevantBinds      :: Maybe Int,   -- ^ Maximum number of bindings from the type envt
                                         --   to show in type error messages
@@ -605,6 +628,7 @@ data DynFlags = DynFlags {
   mainModIs             :: Module,
   mainFunIs             :: Maybe String,
   ctxtStkDepth          :: Int,         -- ^ Typechecker context stack depth
+  tyFunStkDepth         :: Int,         -- ^ Typechecker type function stack depth
 
   thisPackage           :: PackageId,   -- ^ name of package currently being compiled
 
@@ -668,6 +692,9 @@ data DynFlags = DynFlags {
   pluginModNames        :: [ModuleName],
   pluginModNameOpts     :: [(ModuleName,String)],
 
+  -- GHC API hooks
+  hooks                 :: Hooks,
+
   --  For ghc -M
   depMakefile           :: FilePath,
   depIncludePkgDeps     :: Bool,
@@ -694,7 +721,8 @@ data DynFlags = DynFlags {
   filesToClean          :: IORef [FilePath],
   dirsToClean           :: IORef (Map FilePath FilePath),
   filesToNotIntermediateClean :: IORef [FilePath],
-
+  -- The next available suffix to uniquely name a temp file, updated atomically
+  nextTempSuffix        :: IORef Int,
 
   -- Names of files which were generated from -ddump-to-file; used to
   -- track which ones we need to truncate because it's our first run
@@ -758,13 +786,22 @@ data DynFlags = DynFlags {
 
   llvmVersion           :: IORef Int,
 
-  nextWrapperNum        :: IORef Int,
+  nextWrapperNum        :: IORef (ModuleEnv Int),
 
   -- | Machine dependant flags (-m<blah> stuff)
   sseVersion            :: Maybe (Int, Int),  -- (major, minor)
+  avx                   :: Bool,
+  avx2                  :: Bool,
+  avx512cd              :: Bool, -- Enable AVX-512 Conflict Detection Instructions.
+  avx512er              :: Bool, -- Enable AVX-512 Exponential and Reciprocal Instructions.
+  avx512f               :: Bool, -- Enable AVX-512 instructions.
+  avx512pf              :: Bool, -- Enable AVX-512 PreFetch Instructions.
 
   -- | Run-time linker information (what options we need, etc.)
-  rtldFlags             :: IORef (Maybe LinkerInfo)
+  rtldInfo              :: IORef (Maybe LinkerInfo),
+
+  -- | Run-time compiler information
+  rtccInfo              :: IORef (Maybe CompilerInfo)
  }
 
 class HasDynFlags m where
@@ -1101,6 +1138,13 @@ wayGeneralFlags _ (WayCustom {}) = []
 wayGeneralFlags _ WayThreaded = []
 wayGeneralFlags _ WayDebug    = []
 wayGeneralFlags _ WayDyn      = [Opt_PIC]
+    -- We could get away without adding -fPIC when compiling the
+    -- modules of a program that is to be linked with -dynamic; the
+    -- program itself does not need to be position-independent, only
+    -- the libraries need to be.  HOWEVER, GHCi links objects into a
+    -- .so before loading the .so using the system linker.  Since only
+    -- PIC objects can be linked into a .so, we have to compile even
+    -- modules of the main program with -fPIC when using -dynamic.
 wayGeneralFlags _ WayProf     = [Opt_SccProfilingOn]
 wayGeneralFlags _ WayEventLog = []
 wayGeneralFlags _ WayPar      = [Opt_Parallel]
@@ -1220,7 +1264,7 @@ dynamicTooMkDynamicDynFlags dflags0
 
 -----------------------------------------------------------------------------
 
--- | Used by 'GHC.newSession' to partially initialize a new 'DynFlags' value
+-- | Used by 'GHC.runGhc' to partially initialize a new 'DynFlags' value
 initDynFlags :: DynFlags -> IO DynFlags
 initDynFlags dflags = do
  let -- We can't build with dynamic-too on Windows, as labels before
@@ -1229,13 +1273,15 @@ initDynFlags dflags = do
      platformCanGenerateDynamicToo
          = platformOS (targetPlatform dflags) /= OSMinGW32
  refCanGenerateDynamicToo <- newIORef platformCanGenerateDynamicToo
+ refNextTempSuffix <- newIORef 0
  refFilesToClean <- newIORef []
  refDirsToClean <- newIORef Map.empty
  refFilesToNotIntermediateClean <- newIORef []
  refGeneratedDumps <- newIORef Set.empty
  refLlvmVersion <- newIORef 28
- refRtldFlags <- newIORef Nothing
- wrapperNum <- newIORef 0
+ refRtldInfo <- newIORef Nothing
+ refRtccInfo <- newIORef Nothing
+ wrapperNum <- newIORef emptyModuleEnv
  canUseUnicodeQuotes <- do let enc = localeEncoding
                                str = "‛’"
                            (withCString enc str $ \cstr ->
@@ -1244,6 +1290,7 @@ initDynFlags dflags = do
                                `catchIOError` \_ -> return False
  return dflags{
         canGenerateDynamicToo = refCanGenerateDynamicToo,
+        nextTempSuffix = refNextTempSuffix,
         filesToClean   = refFilesToClean,
         dirsToClean    = refDirsToClean,
         filesToNotIntermediateClean = refFilesToNotIntermediateClean,
@@ -1251,11 +1298,12 @@ initDynFlags dflags = do
         llvmVersion    = refLlvmVersion,
         nextWrapperNum = wrapperNum,
         useUnicodeQuotes = canUseUnicodeQuotes,
-        rtldFlags      = refRtldFlags
+        rtldInfo      = refRtldInfo,
+        rtccInfo      = refRtccInfo
         }
 
 -- | The normal 'DynFlags'. Note that they is not suitable for use in this form
--- and must be fully initialized by 'GHC.newSession' first.
+-- and must be fully initialized by 'GHC.runGhc' first.
 defaultDynFlags :: Settings -> DynFlags
 defaultDynFlags mySettings =
      DynFlags {
@@ -1279,11 +1327,17 @@ defaultDynFlags mySettings =
         historySize             = 20,
         strictnessBefore        = [],
 
+        parMakeCount            = Just 1,
+
+        enableTimeStats         = False,
+        ghcHeapSize             = Nothing,
+
         cmdlineHcIncludes       = [],
         importPaths             = ["."],
         mainModIs               = mAIN,
         mainFunIs               = Nothing,
         ctxtStkDepth            = mAX_CONTEXT_REDUCTION_DEPTH,
+        tyFunStkDepth           = mAX_TYPE_FUNCTION_REDUCTION_DEPTH,
 
         thisPackage             = mainPackageId,
 
@@ -1306,6 +1360,7 @@ defaultDynFlags mySettings =
 
         pluginModNames          = [],
         pluginModNameOpts       = [],
+        hooks                   = emptyHooks,
 
         outputFile              = Nothing,
         dynOutputFile           = Nothing,
@@ -1338,6 +1393,7 @@ defaultDynFlags mySettings =
         depExcludeMods    = [],
         depSuffixes       = [],
         -- end of ghc -M values
+        nextTempSuffix = panic "defaultDynFlags: No nextTempSuffix",
         filesToClean   = panic "defaultDynFlags: No filesToClean",
         dirsToClean    = panic "defaultDynFlags: No dirsToClean",
         filesToNotIntermediateClean = panic "defaultDynFlags: No filesToNotIntermediateClean",
@@ -1387,7 +1443,14 @@ defaultDynFlags mySettings =
         interactivePrint = Nothing,
         nextWrapperNum = panic "defaultDynFlags: No nextWrapperNum",
         sseVersion = Nothing,
-        rtldFlags = panic "defaultDynFlags: no rtldFlags"
+        avx = False,
+        avx2 = False,
+        avx512cd = False,
+        avx512er = False,
+        avx512f = False,
+        avx512pf = False,
+        rtldInfo = panic "defaultDynFlags: no rtldInfo",
+        rtccInfo = panic "defaultDynFlags: no rtccInfo"
       }
 
 defaultWays :: Settings -> [Way]
@@ -1396,7 +1459,7 @@ defaultWays settings = if pc_DYNAMIC_BY_DEFAULT (sPlatformConstants settings)
                        else []
 
 interpWays :: [Way]
-interpWays = if cDYNAMIC_GHC_PROGRAMS
+interpWays = if dynamicGhc
              then [WayDyn]
              else []
 
@@ -1428,15 +1491,15 @@ defaultLogAction dflags severity srcSpan style msg
 
 defaultLogActionHPrintDoc :: DynFlags -> Handle -> SDoc -> PprStyle -> IO ()
 defaultLogActionHPrintDoc dflags h d sty
-    = do let doc = runSDoc d (initSDocContext dflags sty)
-         Pretty.printDoc Pretty.PageMode (pprCols dflags) h doc
-         hFlush h
+ = defaultLogActionHPutStrDoc dflags h (d $$ text "") sty
+      -- Adds a newline
 
 defaultLogActionHPutStrDoc :: DynFlags -> Handle -> SDoc -> PprStyle -> IO ()
 defaultLogActionHPutStrDoc dflags h d sty
-    = do let doc = runSDoc d (initSDocContext dflags sty)
-         hPutStr h (Pretty.render doc)
-         hFlush h
+  = Pretty.printDoc_ Pretty.PageMode (pprCols dflags) h doc
+  where   -- Don't add a newline at the end, so that successive
+          -- calls to this log-action can output all on the same line
+    doc = runSDoc d (initSDocContext dflags sty)
 
 newtype FlushOut = FlushOut (IO ())
 
@@ -1906,30 +1969,41 @@ parseDynamicFlagsFull activeFlags cmdline dflags0 args = do
       throwGhcExceptionIO (CmdLineError ("combination not supported: " ++
                                intercalate "/" (map wayDesc theWays)))
 
-  whenGeneratingDynamicToo dflags3 $
-      unless (isJust (outputFile dflags3) == isJust (dynOutputFile dflags3)) $
-          liftIO $ throwGhcExceptionIO $ CmdLineError
-              "With -dynamic-too, must give -dyno iff giving -o"
+  let chooseOutput
+        | isJust (outputFile dflags3)          -- Only iff user specified -o ...
+        , not (isJust (dynOutputFile dflags3)) -- but not -dyno
+        = return $ dflags3 { dynOutputFile = Just $ dynOut (fromJust $ outputFile dflags3) }
+        | otherwise
+        = return dflags3
+        where
+          dynOut = flip addExtension (dynObjectSuf dflags3) . dropExtension
+  dflags4 <- ifGeneratingDynamicToo dflags3 chooseOutput (return dflags3)
 
-  let (dflags4, consistency_warnings) = makeDynFlagsConsistent dflags3
+  let (dflags5, consistency_warnings) = makeDynFlagsConsistent dflags4
 
-  dflags5 <- case dllSplitFile dflags4 of
-             Nothing -> return (dflags4 { dllSplit = Nothing })
+  dflags6 <- case dllSplitFile dflags5 of
+             Nothing -> return (dflags5 { dllSplit = Nothing })
              Just f ->
-                 case dllSplit dflags4 of
+                 case dllSplit dflags5 of
                  Just _ ->
                      -- If dllSplit is out of date then it would have
                      -- been set to Nothing. As it's a Just, it must be
                      -- up-to-date.
-                     return dflags4
+                     return dflags5
                  Nothing ->
                      do xs <- liftIO $ readFile f
                         let ss = map (Set.fromList . words) (lines xs)
-                        return $ dflags4 { dllSplit = Just ss }
+                        return $ dflags5 { dllSplit = Just ss }
 
-  liftIO $ setUnsafeGlobalDynFlags dflags5
+  -- Set timer stats & heap size
+  when (enableTimeStats dflags6) $ liftIO enableTimingStats
+  case (ghcHeapSize dflags6) of
+    Just x -> liftIO (setHeapSize x)
+    _      -> return ()
 
-  return (dflags5, leftover, consistency_warnings ++ sh_warns ++ warns)
+  liftIO $ setUnsafeGlobalDynFlags dflags6
+
+  return (dflags6, leftover, consistency_warnings ++ sh_warns ++ warns)
 
 updateWays :: DynFlags -> DynFlags
 updateWays dflags
@@ -2036,7 +2110,15 @@ dynamic_flags = [
                            addWarn "-#include and INCLUDE pragmas are deprecated: They no longer have any effect"))
   , Flag "v"        (OptIntSuffix setVerbosity)
 
-        ------- ways --------------------------------------------------------
+  , Flag "j"        (OptIntSuffix (\n -> upd (\d -> d {parMakeCount = n})))
+
+    -- RTS options -------------------------------------------------------------
+  , Flag "H"           (HasArg (\s -> upd (\d ->
+          d { ghcHeapSize = Just $ fromIntegral (decodeSize s)})))
+
+  , Flag "Rghc-timing" (NoArg (upd (\d -> d { enableTimeStats = True })))
+
+    ------- ways ---------------------------------------------------------------
   , Flag "prof"           (NoArg (addWay WayProf))
   , Flag "eventlog"       (NoArg (addWay WayEventLog))
   , Flag "parallel"       (NoArg (addWay WayPar))
@@ -2210,7 +2292,7 @@ dynamic_flags = [
   , Flag "ddump-cmm-cfg"           (setDumpFlag Opt_D_dump_cmm_cfg)
   , Flag "ddump-cmm-cbe"           (setDumpFlag Opt_D_dump_cmm_cbe)
   , Flag "ddump-cmm-proc"          (setDumpFlag Opt_D_dump_cmm_proc)
-  , Flag "ddump-cmm-rewrite"       (setDumpFlag Opt_D_dump_cmm_rewrite)
+  , Flag "ddump-cmm-sink"          (setDumpFlag Opt_D_dump_cmm_sink)
   , Flag "ddump-cmm-sp"            (setDumpFlag Opt_D_dump_cmm_sp)
   , Flag "ddump-cmm-procmap"       (setDumpFlag Opt_D_dump_cmm_procmap)
   , Flag "ddump-cmm-split"         (setDumpFlag Opt_D_dump_cmm_split)
@@ -2244,7 +2326,9 @@ dynamic_flags = [
   , Flag "ddump-spec"              (setDumpFlag Opt_D_dump_spec)
   , Flag "ddump-prep"              (setDumpFlag Opt_D_dump_prep)
   , Flag "ddump-stg"               (setDumpFlag Opt_D_dump_stg)
+  , Flag "ddump-call-arity"        (setDumpFlag Opt_D_dump_call_arity)
   , Flag "ddump-stranal"           (setDumpFlag Opt_D_dump_stranal)
+  , Flag "ddump-strsigs"           (setDumpFlag Opt_D_dump_strsigs)
   , Flag "ddump-tc"                (setDumpFlag Opt_D_dump_tc)
   , Flag "ddump-types"             (setDumpFlag Opt_D_dump_types)
   , Flag "ddump-rules"             (setDumpFlag Opt_D_dump_rules)
@@ -2253,7 +2337,8 @@ dynamic_flags = [
   , Flag "ddump-rn-trace"          (setDumpFlag Opt_D_dump_rn_trace)
   , Flag "ddump-if-trace"          (setDumpFlag Opt_D_dump_if_trace)
   , Flag "ddump-cs-trace"          (setDumpFlag Opt_D_dump_cs_trace)
-  , Flag "ddump-tc-trace"          (setDumpFlag Opt_D_dump_tc_trace)
+  , Flag "ddump-tc-trace"          (NoArg (do { setDumpFlag' Opt_D_dump_tc_trace
+                                              ; setDumpFlag' Opt_D_dump_cs_trace }))
   , Flag "ddump-vt-trace"          (setDumpFlag Opt_D_dump_vt_trace)
   , Flag "ddump-splices"           (setDumpFlag Opt_D_dump_splices)
   , Flag "ddump-rn-stats"          (setDumpFlag Opt_D_dump_rn_stats)
@@ -2289,6 +2374,12 @@ dynamic_flags = [
   , Flag "monly-3-regs" (NoArg (addWarn "The -monly-3-regs flag does nothing; it will be removed in a future GHC release"))
   , Flag "monly-4-regs" (NoArg (addWarn "The -monly-4-regs flag does nothing; it will be removed in a future GHC release"))
   , Flag "msse"         (versionSuffix (\maj min d -> d{ sseVersion = Just (maj, min) }))
+  , Flag "mavx"         (noArg (\d -> d{ avx = True }))
+  , Flag "mavx2"        (noArg (\d -> d{ avx2 = True }))
+  , Flag "mavx512cd"    (noArg (\d -> d{ avx512cd = True }))
+  , Flag "mavx512er"    (noArg (\d -> d{ avx512er = True }))
+  , Flag "mavx512f"     (noArg (\d -> d{ avx512f = True }))
+  , Flag "mavx512pf"    (noArg (\d -> d{ avx512pf = True }))
 
      ------ Warning opts -------------------------------------------------
   , Flag "W"      (NoArg (mapM_ setWarningFlag minusWOpts))
@@ -2326,6 +2417,7 @@ dynamic_flags = [
   , Flag "fno-liberate-case-threshold" (noArg (\d -> d{ liberateCaseThreshold = Nothing }))
   , Flag "frule-check"                 (sepArg (\s d -> d{ ruleCheck = Just s }))
   , Flag "fcontext-stack"              (intSuffix (\n d -> d{ ctxtStkDepth = n }))
+  , Flag "ftype-function-depth"        (intSuffix (\n d -> d{ tyFunStkDepth = n }))
   , Flag "fstrictness-before"          (intSuffix (\n d -> d{ strictnessBefore = n : strictnessBefore d }))
   , Flag "ffloat-lam-args"             (intSuffix (\n d -> d{ floatLamArgs = Just n }))
   , Flag "ffloat-all-lams"             (noArg (\d -> d{ floatLamArgs = Nothing }))
@@ -2494,12 +2586,15 @@ fWarningFlags = [
   ( "warn-warnings-deprecations",       Opt_WarnWarningsDeprecations, nop ),
   ( "warn-deprecations",                Opt_WarnWarningsDeprecations, nop ),
   ( "warn-deprecated-flags",            Opt_WarnDeprecatedFlags, nop ),
+  ( "warn-amp",                         Opt_WarnAMP, nop ),
   ( "warn-orphans",                     Opt_WarnOrphans, nop ),
   ( "warn-identities",                  Opt_WarnIdentities, nop ),
   ( "warn-auto-orphans",                Opt_WarnAutoOrphans, nop ),
   ( "warn-tabs",                        Opt_WarnTabs, nop ),
+  ( "warn-typed-holes",                 Opt_WarnTypedHoles, nop ),
   ( "warn-unrecognised-pragmas",        Opt_WarnUnrecognisedPragmas, nop ),
-  ( "warn-lazy-unlifted-bindings",      Opt_WarnLazyUnliftedBindings, nop ),
+  ( "warn-lazy-unlifted-bindings",      Opt_WarnLazyUnliftedBindings,
+    \_ -> deprecate "it has no effect, and will be removed in GHC 7.10" ),
   ( "warn-unused-do-bind",              Opt_WarnUnusedDoBind, nop ),
   ( "warn-wrong-do-bind",               Opt_WarnWrongDoBind, nop ),
   ( "warn-alternative-layout-rule-transitional", Opt_WarnAlternativeLayoutRuleTransitional, nop ),
@@ -2508,8 +2603,7 @@ fWarningFlags = [
   ( "warn-pointless-pragmas",           Opt_WarnPointlessPragmas, nop ),
   ( "warn-unsupported-calling-conventions", Opt_WarnUnsupportedCallingConventions, nop ),
   ( "warn-inline-rule-shadowing",       Opt_WarnInlineRuleShadowing, nop ),
-  ( "warn-unsupported-llvm-version",    Opt_WarnUnsupportedLlvmVersion, nop ),
-  ( "warn-typeable-instances",          Opt_WarnTypeableInstances, nop ) ]
+  ( "warn-unsupported-llvm-version",    Opt_WarnUnsupportedLlvmVersion, nop ) ]
 
 -- | These @-\<blah\>@ flags can all be reversed with @-no-\<blah\>@
 negatableFlags :: [FlagSpec GeneralFlag]
@@ -2533,6 +2627,8 @@ fFlags :: [FlagSpec GeneralFlag]
 fFlags = [
   ( "error-spans",                      Opt_ErrorSpans, nop ),
   ( "print-explicit-foralls",           Opt_PrintExplicitForalls, nop ),
+  ( "print-explicit-kinds",             Opt_PrintExplicitKinds, nop ),
+  ( "call-arity",                       Opt_CallArity, nop ),
   ( "strictness",                       Opt_Strictness, nop ),
   ( "late-dmd-anal",                    Opt_LateDmdAnal, nop ),
   ( "specialise",                       Opt_Specialise, nop ),
@@ -2571,6 +2667,7 @@ fFlags = [
   ( "regs-graph",                       Opt_RegsGraph, nop ),
   ( "regs-iterative",                   Opt_RegsIterative, nop ),
   ( "llvm-tbaa",                        Opt_LlvmTBAA, nop), -- hidden flag
+  ( "llvm-pass-vectors-in-regs",        Opt_LlvmPassVectorsInRegisters, nop), -- hidden flag
   ( "irrefutable-tuples",               Opt_IrrefutableTuples, nop ),
   ( "cmm-sink",                         Opt_CmmSink, nop ),
   ( "cmm-elim-common-blocks",           Opt_CmmElimCommonBlocks, nop ),
@@ -2596,7 +2693,8 @@ fFlags = [
   ( "kill-absence",                     Opt_KillAbsence, nop),
   ( "kill-one-shot",                    Opt_KillOneShot, nop),
   ( "dicts-strict",                     Opt_DictsStrict, nop ),
-  ( "dmd-tx-dict-sel",                  Opt_DmdTxDictSel, nop )
+  ( "dmd-tx-dict-sel",                  Opt_DmdTxDictSel, nop ),
+  ( "loopification",                    Opt_Loopification, nop )
   ]
 
 -- | These @-f\<blah\>@ flags can all be reversed with @-fno-\<blah\>@
@@ -2770,9 +2868,9 @@ xFlags = [
   ( "UndecidableInstances",             Opt_UndecidableInstances, nop ),
   ( "IncoherentInstances",              Opt_IncoherentInstances, nop ),
   ( "PackageImports",                   Opt_PackageImports, nop ),
-  ( "TypeHoles",                        Opt_TypeHoles, nop ),
   ( "NegativeLiterals",                 Opt_NegativeLiterals, nop ),
-  ( "EmptyCase",                        Opt_EmptyCase, nop )
+  ( "EmptyCase",                        Opt_EmptyCase, nop ),
+  ( "PatternSynonyms",                  Opt_PatternSynonyms, nop )
   ]
 
 defaultFlags :: Settings -> [GeneralFlag]
@@ -2866,6 +2964,7 @@ optLevelFlags
                                          --              in PrelRules
     , ([1,2],   Opt_DoEtaReduction)
     , ([1,2],   Opt_CaseMerge)
+    , ([1,2],   Opt_CallArity)
     , ([1,2],   Opt_Strictness)
     , ([1,2],   Opt_CSE)
     , ([1,2],   Opt_FullLaziness)
@@ -2880,6 +2979,9 @@ optLevelFlags
     , ([0,1,2], Opt_LlvmTBAA)
     , ([1,2],   Opt_CmmSink)
     , ([1,2],   Opt_CmmElimCommonBlocks)
+    , ([1,2],   Opt_Loopification)
+
+    , ([0,1,2],     Opt_DmdTxDictSel)
 
     , ([0,1,2],     Opt_DmdTxDictSel)
 
@@ -2909,6 +3011,8 @@ standardWarnings
     = [ Opt_WarnOverlappingPatterns,
         Opt_WarnWarningsDeprecations,
         Opt_WarnDeprecatedFlags,
+        Opt_WarnAMP,
+        Opt_WarnTypedHoles,
         Opt_WarnUnrecognisedPragmas,
         Opt_WarnPointlessPragmas,
         Opt_WarnDuplicateConstraints,
@@ -2917,11 +3021,9 @@ standardWarnings
         Opt_WarnEmptyEnumerations,
         Opt_WarnMissingFields,
         Opt_WarnMissingMethods,
-        Opt_WarnLazyUnliftedBindings,
         Opt_WarnWrongDoBind,
         Opt_WarnUnsupportedCallingConventions,
         Opt_WarnDodgyForeignImports,
-        Opt_WarnTypeableInstances,
         Opt_WarnInlineRuleShadowing,
         Opt_WarnAlternativeLayoutRuleTransitional,
         Opt_WarnUnsupportedLlvmVersion
@@ -2999,7 +3101,21 @@ glasgowExtsFlags = [
 foreign import ccall unsafe "rts_isProfiled" rtsIsProfiledIO :: IO CInt
 
 rtsIsProfiled :: Bool
-rtsIsProfiled = unsafePerformIO rtsIsProfiledIO /= 0
+rtsIsProfiled = unsafeDupablePerformIO rtsIsProfiledIO /= 0
+#endif
+
+#ifdef GHCI
+-- Consult the RTS to find whether GHC itself has been built with
+-- dynamic linking.  This can't be statically known at compile-time,
+-- because we build both the static and dynamic versions together with
+-- -dynamic-too.
+foreign import ccall unsafe "rts_isDynamic" rtsIsDynamicIO :: IO CInt
+
+dynamicGhc :: Bool
+dynamicGhc = unsafeDupablePerformIO rtsIsDynamicIO /= 0
+#else
+dynamicGhc :: Bool
+dynamicGhc = False
 #endif
 
 setWarnSafe :: Bool -> DynP ()
@@ -3028,10 +3144,18 @@ checkTemplateHaskellOk turn_on
   | otherwise
   = getCurLoc >>= \l -> upd (\d -> d { thOnLoc = l })
 #else
--- In stage 1 we don't know that the RTS has rts_isProfiled,
--- so we simply say "ok".  It doesn't matter because TH isn't
--- available in stage 1 anyway.
-checkTemplateHaskellOk _ = return ()
+-- In stage 1, Template Haskell is simply illegal, except with -M
+-- We don't bleat with -M because there's no problem with TH there,
+-- and in fact GHC's build system does ghc -M of the DPH libraries
+-- with a stage1 compiler
+checkTemplateHaskellOk turn_on
+  | turn_on = do dfs <- liftEwM getCmdLineState
+                 case ghcMode dfs of
+                    MkDepend -> return ()
+                    _        -> addErr msg
+  | otherwise = return ()
+  where
+    msg = "Template Haskell requires GHC with interpreter support\n    Perhaps you are using a stage-1 compiler?"
 #endif
 
 {- **********************************************************************
@@ -3162,7 +3286,6 @@ forceRecompile = do dfs <- liftEwM getCmdLineState
                     when (force_recomp dfs) (setGeneralFlag Opt_ForceRecomp)
         where
           force_recomp dfs = isOneShot (ghcMode dfs)
-
 setVerboseCore2Core :: DynP ()
 setVerboseCore2Core = do setDumpFlag' Opt_D_verbose_core2core
                          upd (\dfs -> dfs { shouldDumpSimplPhase = Nothing })
@@ -3420,7 +3543,7 @@ picCCOpts dflags
       -- otherwise things like stub.c files don't get compiled
       -- correctly.  They need to reference data in the Haskell
       -- objects, but can't without -fPIC.  See
-      -- http://hackage.haskell.org/trac/ghc/wiki/Commentary/PositionIndependentCode
+      -- http://ghc.haskell.org/trac/ghc/wiki/Commentary/PositionIndependentCode
        | gopt Opt_PIC dflags || not (gopt Opt_Static dflags) ->
           ["-fPIC", "-U __PIC__", "-D__PIC__"]
        | otherwise                             -> []
@@ -3461,16 +3584,19 @@ compilerInfo dflags
        ("Support SMP",                 cGhcWithSMP),
        ("Tables next to code",         cGhcEnableTablesNextToCode),
        ("RTS ways",                    cGhcRTSWays),
-       ("Support dynamic-too",         "YES"),
+       ("Support dynamic-too",         if isWindows then "NO" else "YES"),
+       ("Support parallel --make",     "YES"),
        ("Dynamic by default",          if dYNAMIC_BY_DEFAULT dflags
                                        then "YES" else "NO"),
-       ("GHC Dynamic",                 if cDYNAMIC_GHC_PROGRAMS
+       ("GHC Dynamic",                 if dynamicGhc
                                        then "YES" else "NO"),
        ("Leading underscore",          cLeadingUnderscore),
        ("Debug on",                    show debugIsOn),
        ("LibDir",                      topDir dflags),
        ("Global Package DB",           systemPackageConfig dflags)
       ]
+  where
+    isWindows = platformOS (targetPlatform dflags) == OSMinGW32
 
 #include "../includes/dist-derivedconstants/header/GHCConstantsHaskellWrappers.hs"
 
@@ -3509,6 +3635,11 @@ tARGET_MAX_WORD dflags
 -- Be careful not to introduce potential loops!
 makeDynFlagsConsistent :: DynFlags -> (DynFlags, [Located String])
 makeDynFlagsConsistent dflags
+ -- Disable -dynamic-too on Windows (#8228, #7134, #5987)
+ | os == OSMinGW32 && gopt Opt_BuildDynamicToo dflags
+    = let dflags' = gopt_unset dflags Opt_BuildDynamicToo
+          warn    = "-dynamic-too is not supported on Windows"
+      in loop dflags' warn
  | hscTarget dflags == HscC &&
    not (platformUnregisterised (targetPlatform dflags))
     = if cGhcWithNativeCodeGen == "YES"
@@ -3528,7 +3659,7 @@ makeDynFlagsConsistent dflags
             warn = "No native code generator, so using LLVM"
         in loop dflags' warn
  | hscTarget dflags == HscLlvm &&
-   not ((arch == ArchX86_64) && (os == OSLinux || os == OSDarwin)) &&
+   not ((arch == ArchX86_64) && (os == OSLinux || os == OSDarwin || os == OSFreeBSD)) &&
    not ((isARM arch) && (os == OSLinux)) &&
    (not (gopt Opt_Static dflags) || gopt Opt_PIC dflags)
     = if cGhcWithNativeCodeGen == "YES"
@@ -3568,11 +3699,17 @@ setUnsafeGlobalDynFlags :: DynFlags -> IO ()
 setUnsafeGlobalDynFlags = writeIORef v_unsafeGlobalDynFlags
 
 -- -----------------------------------------------------------------------------
--- SSE
+-- SSE and AVX
 
 -- TODO: Instead of using a separate predicate (i.e. isSse2Enabled) to
 -- check if SSE is enabled, we might have x86-64 imply the -msse2
 -- flag.
+
+isSseEnabled :: DynFlags -> Bool
+isSseEnabled dflags = case platformArch (targetPlatform dflags) of
+    ArchX86_64 -> True
+    ArchX86    -> sseVersion dflags >= Just (1,0)
+    _          -> False
 
 isSse2Enabled :: DynFlags -> Bool
 isSse2Enabled dflags = case platformArch (targetPlatform dflags) of
@@ -3588,13 +3725,57 @@ isSse2Enabled dflags = case platformArch (targetPlatform dflags) of
 isSse4_2Enabled :: DynFlags -> Bool
 isSse4_2Enabled dflags = sseVersion dflags >= Just (4,2)
 
+isAvxEnabled :: DynFlags -> Bool
+isAvxEnabled dflags = avx dflags || avx2 dflags || avx512f dflags
+
+isAvx2Enabled :: DynFlags -> Bool
+isAvx2Enabled dflags = avx2 dflags || avx512f dflags
+
+isAvx512cdEnabled :: DynFlags -> Bool
+isAvx512cdEnabled dflags = avx512cd dflags
+
+isAvx512erEnabled :: DynFlags -> Bool
+isAvx512erEnabled dflags = avx512er dflags
+
+isAvx512fEnabled :: DynFlags -> Bool
+isAvx512fEnabled dflags = avx512f dflags
+
+isAvx512pfEnabled :: DynFlags -> Bool
+isAvx512pfEnabled dflags = avx512pf dflags
+
 -- -----------------------------------------------------------------------------
--- Linker information
+-- Linker/compiler information
 
 -- LinkerInfo contains any extra options needed by the system linker.
 data LinkerInfo
   = GnuLD    [Option]
   | GnuGold  [Option]
   | DarwinLD [Option]
+  | SolarisLD [Option]
   | UnknownLD
   deriving Eq
+
+-- CompilerInfo tells us which C compiler we're using
+data CompilerInfo
+   = GCC
+   | Clang
+   | UnknownCC
+   deriving Eq
+
+-- -----------------------------------------------------------------------------
+-- RTS hooks
+
+-- Convert sizes like "3.5M" into integers
+decodeSize :: String -> Integer
+decodeSize str
+  | c == ""      = truncate n
+  | c == "K" || c == "k" = truncate (n * 1000)
+  | c == "M" || c == "m" = truncate (n * 1000 * 1000)
+  | c == "G" || c == "g" = truncate (n * 1000 * 1000 * 1000)
+  | otherwise            = throwGhcException (CmdLineError ("can't decode size: " ++ str))
+  where (m, c) = span pred str
+        n      = readRational m
+        pred c = isDigit c || c == '.'
+
+foreign import ccall unsafe "setHeapSize"       setHeapSize       :: Int -> IO ()
+foreign import ccall unsafe "enableTimingStats" enableTimingStats :: IO ()

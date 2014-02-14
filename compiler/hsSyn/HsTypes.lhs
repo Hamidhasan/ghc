@@ -35,14 +35,13 @@ module HsTypes (
         splitHsAppTys, hsTyGetAppHead_maybe, mkHsAppTys, mkHsOpTy,
 
         -- Printing
-        pprParendHsType, pprHsForAll, pprHsContext, ppr_hs_context
+        pprParendHsType, pprHsForAll, pprHsContext, pprHsContextNoArrow, ppr_hs_context,
     ) where
 
-import {-# SOURCE #-} HsExpr ( HsSplice, pprSplice )
+import {-# SOURCE #-} HsExpr ( HsSplice, pprUntypedSplice )
 
 import HsLit
 
-import NameSet( FreeVars )
 import Name( Name )
 import RdrName( RdrName )
 import DataCon( HsBang(..) )
@@ -181,12 +180,12 @@ instance OutputableBndr HsIPName where
     pprPrefixOcc n = ppr n
 
 data HsTyVarBndr name
-  = HsTyVarBndr name
-                (Maybe (LHsKind name)) -- See Note [Printing KindedTyVars]
-                (Maybe Role)
-      --  *** NOTA BENE *** A "monotype" in a pragma can have
-      -- for-alls in it, (mostly to do with dictionaries).  These
-      -- must be explicitly Kinded.
+  = UserTyVar        -- no explicit kinding
+         name
+
+  | KindedTyVar
+         name
+         (LHsKind name)  -- The user-supplied kind signature
   deriving (Data, Typeable)
 
 data HsType name
@@ -234,7 +233,6 @@ data HsType name
   | HsQuasiQuoteTy      (HsQuasiQuote name)
 
   | HsSpliceTy          (HsSplice name) 
-                        FreeVars        -- Variables free in the splice (filled in by renamer)
                         PostTcKind
 
   | HsDocTy             (LHsType name) LHsDocString -- A documented type
@@ -423,9 +421,9 @@ plus :: HsExplicitFlag -> HsExplicitFlag -> HsExplicitFlag
 Implicit `plus` Implicit = Implicit
 _        `plus` _        = Explicit
 
-hsExplicitTvs :: LHsType name -> [name]
+hsExplicitTvs :: LHsType Name -> [Name]
 -- The explicitly-given forall'd type variables of a HsType
-hsExplicitTvs (L _ (HsForAllTy Explicit tvs _ _)) = hsLTyVarNames tvs
+hsExplicitTvs (L _ (HsForAllTy Explicit tvs _ _)) = hsLKiTyVarNames tvs
 hsExplicitTvs _                                   = []
 
 ---------------------
@@ -551,10 +549,8 @@ instance (OutputableBndr name) => Outputable (LHsTyVarBndrs name) where
       = sep [ ifPprDebug $ braces (interppSP kvs), interppSP tvs ]
 
 instance (OutputableBndr name) => Outputable (HsTyVarBndr name) where
-    ppr (HsTyVarBndr n Nothing  Nothing)  = ppr n
-    ppr (HsTyVarBndr n (Just k) Nothing)  = parens $ hsep [ppr n, dcolon, ppr k]
-    ppr (HsTyVarBndr n Nothing  (Just r)) = ppr n <> char '@' <> ppr r
-    ppr (HsTyVarBndr n (Just k) (Just r)) = parens $ hsep [ppr n, dcolon, ppr k] <> char '@' <> ppr r
+    ppr (UserTyVar n)     = ppr n
+    ppr (KindedTyVar n k) = parens $ hsep [ppr n, dcolon, ppr k]
 
 instance (Outputable thing) => Outputable (HsWithBndrs thing) where
     ppr (HsWB { hswb_cts = ty }) = ppr ty
@@ -573,9 +569,13 @@ pprHsForAll exp qtvs cxt
     forall_part = ptext (sLit "forall") <+> ppr qtvs <> dot
 
 pprHsContext :: (OutputableBndr name) => HsContext name -> SDoc
-pprHsContext []         = empty
-pprHsContext [L _ pred] = ppr pred <+> darrow
-pprHsContext cxt        = ppr_hs_context cxt <+> darrow
+pprHsContext []  = empty
+pprHsContext cxt = pprHsContextNoArrow cxt <+> darrow
+
+pprHsContextNoArrow :: (OutputableBndr name) => HsContext name -> SDoc
+pprHsContextNoArrow []         = empty
+pprHsContextNoArrow [L _ pred] = ppr pred
+pprHsContextNoArrow cxt        = ppr_hs_context cxt
 
 ppr_hs_context :: (OutputableBndr name) => HsContext name -> SDoc
 ppr_hs_context []  = empty
@@ -653,7 +653,7 @@ ppr_mono_ty _    (HsRoleAnnot ty r)  = ppr ty <> char '@' <> ppr r
 ppr_mono_ty _    (HsListTy ty)       = brackets (ppr_mono_lty pREC_TOP ty)
 ppr_mono_ty _    (HsPArrTy ty)       = paBrackets (ppr_mono_lty pREC_TOP ty)
 ppr_mono_ty prec (HsIParamTy n ty)   = maybeParen prec pREC_FUN (ppr n <+> dcolon <+> ppr_mono_lty pREC_TOP ty)
-ppr_mono_ty _    (HsSpliceTy s _ _)  = pprSplice s
+ppr_mono_ty _    (HsSpliceTy s _)    = pprUntypedSplice s
 ppr_mono_ty _    (HsCoreTy ty)       = ppr ty
 ppr_mono_ty _    (HsExplicitListTy _ tys) = quote $ brackets (interpp'SP tys)
 ppr_mono_ty _    (HsExplicitTupleTy _ tys) = quote $ parens (interpp'SP tys)

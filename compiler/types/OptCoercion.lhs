@@ -7,7 +7,7 @@
 -- The above warning supression flag is a temporary kludge.
 -- While working on this module you are encouraged to remove it and
 -- detab the module (please do the detabbing in a separate patch). See
---     http://hackage.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
+--     http://ghc.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
 -- for details
 
 module OptCoercion ( optCoercion, checkAxInstCo ) where 
@@ -223,6 +223,16 @@ opt_co' env sym mrole (InstCo co ty)
     ty' = substTy env ty
 
 opt_co' env sym _ (SubCo co) = opt_co env sym (Just Representational) co
+
+-- XXX: We could add another field to CoAxiomRule that
+-- would allow us to do custom simplifications.
+opt_co' env sym mrole (AxiomRuleCo co ts cs) =
+  wrapRole mrole (coaxrRole co) $
+    wrapSym sym $
+    AxiomRuleCo co (map (substTy env) ts)
+                   (zipWith (opt_co env False) (map Just (coaxrAsmpRoles co)) cs)
+
+
 
 -------------
 opt_univ :: CvSubst -> Role -> Type -> Type -> Coercion

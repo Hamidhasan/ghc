@@ -308,6 +308,7 @@ module X where
 
   <sect1 id="modes">
     <title>Modes of operation</title>
+    <indexterm><primary>help options</primary></indexterm>
 
     <para>
       GHC's behaviour is firstly controlled by a mode flag.  Only one
@@ -596,6 +597,11 @@ ghc Main.hs
           invoked, so the dependencies never get out of sync with the
           source.</para>
         </listitem>
+        <listitem>
+          <para>Using the <literal>-j</literal> flag, you can compile
+          modules in parallel. Specify <literal>-jN</literal> to
+          compile <replaceable>N</replaceable> jobs in parallel.</para>
+        </listitem>
       </itemizedlist>
 
       <para>Any of the command-line options described in the rest of
@@ -786,9 +792,8 @@ ghc -c Foo.hs
   </sect1>
 
   <sect1 id="options-help">
-    <title>Help and verbosity options</title>
+    <title>Verbosity options</title>
 
-    <indexterm><primary>help options</primary></indexterm>
     <indexterm><primary>verbosity options</primary></indexterm>
 
     <para>See also the <option>--help</option>, <option>--version</option>, <option>--numeric-version</option>,
@@ -873,6 +878,43 @@ ghc -c Foo.hs
               </listitem>
             </varlistentry>
           </variablelist>
+        </listitem>
+      </varlistentry>
+
+
+      <varlistentry>
+        <term><option>--fprint-explicit-foralls, -fprint-explicit-kinds</option>
+          <indexterm><primary><option>-fprint-explicit-foralls</option></primary></indexterm>
+          <indexterm><primary><option>-fprint-explicit-kinds</option></primary></indexterm>
+        </term>
+        <listitem>
+          <para>These two flags control the way in which GHC displays types, in error messages and in GHCi.
+          Using <option>-fprint-explicit-foralls</option> makes GHC print explicit <literal>forall</literal>
+          quantification at the top level of a type; normally this is suppressed.  For example, in GHCi:
+<screen>
+ghci> let f x = x
+ghci> :t f
+f :: a -> a
+ghci> :set -fprint-explicit-foralls
+ghci> :t f
+f :: forall a. a -> a
+</screen>
+         Using <option>-fprint-explicit-kinds</option> makes GHC print kind-foralls and kind applications
+         in types, which are normally suppressed.  This can be important when you are using kind polymorphism.
+         For example:
+<screen>
+ghci> :set -XPolyKinds
+ghci> data T a = MkT
+ghci> :t MkT
+MkT :: T b
+ghci> :set -fprint-explicit-foralls
+ghci> :t MkT
+MkT :: forall (b::k). T b
+ghci> :set -fprint-explicit-kinds
+ghci> :t MkT
+MkT :: forall (k::BOX) (b:k). T b
+</screen>
+         </para>
         </listitem>
       </varlistentry>
 
@@ -961,6 +1003,7 @@ test.hs:(5,4)-(6,7):
     program.  These are:
     <option>-fwarn-overlapping-patterns</option>,
     <option>-fwarn-warnings-deprecations</option>,
+    <option>-fwarn-amp</option>,
     <option>-fwarn-deprecated-flags</option>,
     <option>-fwarn-unrecognised-pragmas</option>,
     <option>-fwarn-pointless-pragmas</option>,
@@ -970,11 +1013,9 @@ test.hs:(5,4)-(6,7):
     <option>-fwarn-empty-enumerations</option>,
     <option>-fwarn-missing-fields</option>,
     <option>-fwarn-missing-methods</option>,
-    <option>-fwarn-lazy-unlifted-bindings</option>,
     <option>-fwarn-wrong-do-bind</option>,
     <option>-fwarn-unsupported-calling-conventions</option>,
     <option>-fwarn-dodgy-foreign-imports</option>,
-    <option>-fwarn-typeable-instances</option>,
     <option>-fwarn-inline-rule-shadowing</option>, and
     <option>-fwarn-unsupported-llvm-version</option>.
     The following flags are simple ways to select standard
@@ -1053,6 +1094,26 @@ test.hs:(5,4)-(6,7):
     <variablelist>
 
       <varlistentry>
+        <term><option>-fwarn-typed-holes</option>:</term>
+        <listitem>
+          <indexterm><primary><option>-fwarn-typed-holes</option></primary>
+          </indexterm>
+          <indexterm><primary>warnings</primary></indexterm>
+            <para>When the compiler encounters an unbound local
+            variable prefixed with <literal>_</literal>, or encounters
+            the literal <literal>_</literal> on the right-hand side of
+            an expression, the error message for the unbound term
+            includes the type it needs to type check. It works
+            particularly well with <link
+            linkend="defer-type-errors">deferred type errors</link>.
+            See <xref linkend="typed-holes"/></para>
+
+            <para>This warning is on by default.</para>
+        </listitem>
+      </varlistentry>
+
+
+      <varlistentry>
         <term><option>-fdefer-type-errors</option>:</term>
         <listitem>
           <indexterm><primary><option>-fdefer-type-errors</option></primary>
@@ -1120,6 +1181,24 @@ test.hs:(5,4)-(6,7):
           module, function or type with a WARNING or DEPRECATED pragma
       is used. See <xref linkend="warning-deprecated-pragma"/> for more
       details on the pragmas.</para>
+
+          <para>This option is on by default.</para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term><option>-fwarn-amp</option>:</term>
+        <listitem>
+          <indexterm><primary><option>-fwarn-amp</option></primary>
+          </indexterm>
+          <indexterm><primary>amp</primary></indexterm>
+          <indexterm><primary>applicative-monad proposal</primary></indexterm>
+          <para>Causes a warning to be emitted when a definition
+          is in conflict with the AMP (Applicative-Monad proosal),
+          namely:
+          1. Instance of Monad without Applicative;
+          2. Instance of MonadPlus without Alternative;
+          3. Custom definitions of join/pure/&lt;*&gt;</para>
 
           <para>This option is on by default.</para>
         </listitem>
@@ -1243,12 +1322,7 @@ foreign import "&amp;f" f :: FunPtr t
         <listitem>
           <indexterm><primary><option>-fwarn-lazy-unlifted-bindings</option></primary>
           </indexterm>
-          <para>Causes a warning to be emitted when an unlifted type
-      is bound in a way that looks lazy, e.g.
-      <literal>where (I# x) = ...</literal>. Use
-      <literal>where !(I# x) = ...</literal> instead. This will be an
-      error, rather than a warning, in GHC 7.2.
-      </para>
+          <para>This flag is a no-op, and will be removed in GHC 7.10.</para>
         </listitem>
       </varlistentry>
 
@@ -1486,6 +1560,7 @@ module M where
             never <literal>_simpleFn</literal>; and (b)
             instance declarations can define either <literal>complexFn</literal> or <literal>_simpleFn</literal>.
             </para>
+          <para>The MINIMAL pragma can be used to change which combination of methods will be required for instances of a particular class. See <xref linkend="minimal-pragma"/>.</para>
         </listitem>
       </varlistentry>
 
@@ -1561,7 +1636,7 @@ module M where
             orphan rules or instances.  The flag <option>-fwarn-auto-orphans</option>
             warns about automatically-generated orphan rules, notably as a result of
             specialising functions, for type classes (<literal>Specialise</literal>)
-            or argument values (<literal>SpecConstr</literal>).</para>
+            or argument values (<literal>-fspec-constr</literal>).</para>
         </listitem>
       </varlistentry>
 
@@ -1735,19 +1810,6 @@ f "2"    = 2
             <programlisting>
                do { popInt 10 ; return 10 }
             </programlisting>
-          </para>
-        </listitem>
-      </varlistentry>
-
-      <varlistentry>
-        <term><option>-fwarn-typeable-instances</option>:</term>
-        <listitem>
-          <indexterm><primary><option>-fwarn-typeable-instances</option></primary></indexterm>
-          <indexterm><primary>typeable instances, warning</primary></indexterm>
-
-          <para>Report handwritten (ie. not derived) instances of the
-          <literal>Typeable</literal> class. These are ignore by the compiler;
-          only derived instances of <literal>Typeable</literal> are allowed.
           </para>
         </listitem>
       </varlistentry>
@@ -2096,7 +2158,7 @@ f "2"    = 2
         <varlistentry>
           <term>
             <option>-ffun-to-thunk</option>
-            <indexterm><primary><option>-fignore-asserts</option></primary></indexterm>
+            <indexterm><primary><option>-ffun-to-thunk</option></primary></indexterm>
           </term>
           <listitem>
             <para>Worker-wrapper removes unused arguments, but usually we do
@@ -2143,7 +2205,11 @@ f "2"    = 2
           </term>
           <listitem>
             <para><emphasis>Off by default.</emphasis>Run demand analysis
-            again, at the end of the simplification pipeline
+            again, at the end of the simplification pipeline.  We found some opportunities
+            for discovering strictness that were not visible earlier; and optimisations like
+            <literal>-fspec-constr</literal> can create functions with unused arguments which
+            are eliminated by late demand analysis.  Improvements are modest, but so is the
+            cost.  See notes on the <ulink href="http://ghc.haskell.org/trac/ghc/wiki/LateDmd">Trac wiki page</ulink>.
             </para>
             </listitem>
         </varlistentry>
@@ -2184,7 +2250,9 @@ f "2"    = 2
             <para>The type checker sometimes displays a fragment of the type environment
                   in error messages, but only up to some maximum number, set by this flag.
                   The default is 6.  Turning it off with <option>-fno-max-relevant-bindings</option> 
-                   gives an unlimited number. 
+                   gives an unlimited number. Syntactically top-level bindings are also 
+                   usually excluded (since they may be numerous), but 
+                   <option>-fno-max-relevant-bindings</option> includes them too.
             </para>
           </listitem>
         </varlistentry>
@@ -2427,6 +2495,44 @@ last (x : xs) = last' x xs
             strict recursive branch of the function is created similar to the
             above example.
             </para>
+
+            <para>It is also possible for library writers to instruct
+            GHC to perform call-pattern specialisation extremely
+            aggressively. This is necessary for some highly optimized
+            libraries, where we may want to specialize regardless of
+            the number of specialisations, or the size of the code. As
+            an example, consider a simplified use-case from the
+            <literal>vector</literal> library:</para>
+<programlisting>
+import GHC.Types (SPEC(..))
+
+foldl :: (a -> b -> a) -> a -> Stream b -> a
+{-# INLINE foldl #-}
+foldl f z (Stream step s _) = foldl_loop SPEC z s
+  where
+    foldl_loop !sPEC z s = case step s of
+                            Yield x s' -> foldl_loop sPEC (f z x) s'
+                            Skip       -> foldl_loop sPEC z s'
+                            Done       -> z
+</programlisting>
+
+            <para>Here, after GHC inlines the body of
+            <literal>foldl</literal> to a call site, it will perform
+            call-pattern specialization very aggressively on
+            <literal>foldl_loop</literal> due to the use of
+            <literal>SPEC</literal> in the argument of the loop
+            body. <literal>SPEC</literal> from
+            <literal>GHC.Types</literal> is specifically recognized by
+            the compiler.</para>
+
+            <para>(NB: it is extremely important you use
+            <literal>seq</literal> or a bang pattern on the
+            <literal>SPEC</literal> argument!)</para>
+
+            <para>In particular, after inlining this will
+            expose <literal>f</literal> to the loop body directly,
+            allowing heavy specialisation over the recursive
+            cases.</para>
           </listitem>
         </varlistentry>
 
@@ -2895,7 +3001,7 @@ data D = D !C
 
     </variablelist>
 
-<para>Currently (as of version 6.8.2), GHC does not have the ability to read in External Core files as source. If you would like GHC to have this ability, please <ulink url="http://hackage.haskell.org/trac/ghc/wiki/MailingListsAndIRC">make your wishes known to the GHC Team</ulink>.</para>
+<para>Currently (as of version 6.8.2), GHC does not have the ability to read in External Core files as source. If you would like GHC to have this ability, please <ulink url="http://ghc.haskell.org/trac/ghc/wiki/MailingListsAndIRC">make your wishes known to the GHC Team</ulink>.</para>
 
 </sect1>
 

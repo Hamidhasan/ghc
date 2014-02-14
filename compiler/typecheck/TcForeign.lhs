@@ -13,9 +13,19 @@ module checks to see if a foreign declaration has got a legal type.
 
 \begin{code}
 module TcForeign
-        (
-          tcForeignImports
+        ( tcForeignImports
         , tcForeignExports
+
+        -- Low-level exports for hooks
+        , isForeignImport, isForeignExport
+        , tcFImport, tcFExport
+        , tcForeignImports'
+        , tcCheckFIType, checkCTarget, checkForeignArgs, checkForeignRes
+        , normaliseFfiType
+        , nonIOok, mustBeIO
+        , checkSafe, noCheckSafe
+        , tcForeignExports'
+        , tcCheckFEType
         ) where
 
 #include "HsVersions.h"
@@ -29,7 +39,7 @@ import TcEnv
 
 import FamInst
 import FamInstEnv
-import Coercion      
+import Coercion
 import Type
 import TypeRep
 import ForeignCall
@@ -47,6 +57,8 @@ import Platform
 import SrcLoc
 import Bag
 import FastString
+import Hooks
+import BasicTypes (Origin(..))
 
 import Control.Monad
 \end{code}
@@ -192,9 +204,13 @@ to the module's usages.
 
 \begin{code}
 tcForeignImports :: [LForeignDecl Name] -> TcM ([Id], [LForeignDecl Id], Bag GlobalRdrElt)
+tcForeignImports decls
+  = getHooked tcForeignImportsHook tcForeignImports' >>= ($ decls)
+
+tcForeignImports' :: [LForeignDecl Name] -> TcM ([Id], [LForeignDecl Id], Bag GlobalRdrElt)
 -- For the (Bag GlobalRdrElt) result, 
 -- see Note [Newtype constructor usage in foreign declarations]
-tcForeignImports decls
+tcForeignImports' decls
   = do { (ids, decls, gres) <- mapAndUnzip3M tcFImport $
                                filter isForeignImport decls
        ; return (ids, decls, unionManyBags gres) }
@@ -270,7 +286,7 @@ tcCheckFIType sig_ty arg_tys res_ty idecl@(CImport cconv safety mh (CFunction ta
   | cconv == PrimCallConv = do
       dflags <- getDynFlags
       check (xopt Opt_GHCForeignImportPrim dflags)
-            (text "Use -XGHCForeignImportPrim to allow `foreign import prim'.")
+            (text "Use GHCForeignImportPrim to allow `foreign import prim'.")
       checkCg checkCOrAsmOrLlvmOrInterp
       checkCTarget target
       check (playSafe safety)
@@ -323,14 +339,19 @@ checkMissingAmpersand dflags arg_tys res_ty
 \begin{code}
 tcForeignExports :: [LForeignDecl Name]
                  -> TcM (LHsBinds TcId, [LForeignDecl TcId], Bag GlobalRdrElt)
+tcForeignExports decls =
+  getHooked tcForeignExportsHook tcForeignExports' >>= ($ decls)
+
+tcForeignExports' :: [LForeignDecl Name]
+                 -> TcM (LHsBinds TcId, [LForeignDecl TcId], Bag GlobalRdrElt)
 -- For the (Bag GlobalRdrElt) result, 
 -- see Note [Newtype constructor usage in foreign declarations]
-tcForeignExports decls
+tcForeignExports' decls
   = foldlM combine (emptyLHsBinds, [], emptyBag) (filter isForeignExport decls)
   where
    combine (binds, fs, gres1) (L loc fe) = do
        (b, f, gres2) <- setSrcSpan loc (tcFExport fe)
-       return (b `consBag` binds, L loc f : fs, gres1 `unionBags` gres2)
+       return ((FromSource, b) `consBag` binds, L loc f : fs, gres1 `unionBags` gres2)
 
 tcFExport :: ForeignDecl Name -> TcM (LHsBind Id, ForeignDecl Id, Bag GlobalRdrElt)
 tcFExport fo@(ForeignExport (L loc nm) hs_ty _ spec)

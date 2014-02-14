@@ -10,7 +10,7 @@ TcInstDecls: Typechecking instance declarations
 -- The above warning supression flag is a temporary kludge.
 -- While working on this module you are encouraged to remove it and
 -- detab the module (please do the detabbing in a separate patch). See
---     http://hackage.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
+--     http://ghc.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
 -- for details
 
 module TcInstDcls ( tcInstDecls1, tcInstDecls2 ) where
@@ -21,7 +21,7 @@ import HsSyn
 import TcBinds
 import TcTyClsDecls
 import TcClassDcl( tcClassDecl2, 
-                   HsSigFun, lookupHsSig, mkHsSigFun, emptyHsSigs,
+                   HsSigFun, lookupHsSig, mkHsSigFun,
                    findMethodBind, instantiateMethod, tcInstanceMethodBody )
 import TcPat      ( addInlinePrags )
 import TcRnMonad
@@ -47,7 +47,6 @@ import Class
 import Var
 import VarEnv
 import VarSet 
-import Pair
 import CoreUnfold ( mkDFunUnfolding )
 import CoreSyn    ( Expr(Var, Type), CoreExpr, mkTyApps, mkVarApps )
 import PrelNames  ( tYPEABLE_INTERNAL, typeableClassName, oldTypeableClassNames )
@@ -66,9 +65,10 @@ import NameEnv
 import Outputable
 import SrcLoc
 import Util
+import BooleanFormula ( isUnsatisfied, pprBooleanFormulaNice )
 
 import Control.Monad
-import Maybes     ( orElse, isNothing )
+import Maybes     ( isNothing, isJust, whenIsJust )
 \end{code}
 
 Typechecking instance declarations is done in two passes. The first
@@ -406,14 +406,13 @@ tcInstDecls1 tycl_decls inst_decls deriv_decls
                          ; return (gbl_env, emptyBag, emptyValBindsOut) }
                  else tcDeriving tycl_decls inst_decls deriv_decls
 
-       -- Remove any handwritten instance of poly-kinded Typeable and warn
-       ; dflags <- getDynFlags
-       ; when (wopt Opt_WarnTypeableInstances dflags) $
-              mapM_ (failWithTc . instMsg) typeable_instances
+       -- Fail if there are any handwritten instance of poly-kinded Typeable
+       ; mapM_ (failWithTc . instMsg) typeable_instances
 
        -- Check that if the module is compiled with -XSafe, there are no
        -- hand written instances of old Typeable as then unsafe casts could be
        -- performed. Derived instances are OK.
+       ; dflags <- getDynFlags
        ; when (safeLanguageOn dflags) $
              mapM_ (\x -> when (typInstCheck x)
                                (addErrAt (getSrcSpan $ iSpec x) typInstErr))
@@ -570,7 +569,12 @@ tcClsInstDecl (L loc (ClsInstDecl { cid_poly_ty = poly_ty, cid_binds = binds
               ispec 	= mkLocalInstance dfun overlap_flag tyvars' clas (substTys subst inst_tys)
                             -- Be sure to freshen those type variables, 
                             -- so they are sure not to appear in any lookup
-              inst_info = InstInfo { iSpec  = ispec, iBinds = VanillaInst binds uprags False }
+              inst_info = InstInfo { iSpec  = ispec
+                                   , iBinds = InstBindings
+                                     { ib_binds = binds
+                                     , ib_pragmas = uprags
+                                     , ib_extensions = []
+                                     , ib_standalone_deriving = False } }
 
         ; return ( [inst_info], tyfam_insts0 ++ concat tyfam_insts1 ++ datafam_insts) }
 
@@ -663,7 +667,7 @@ tcDataFamInstDecl mb_clsinfo
 
          -- Kind check type patterns
        ; tcFamTyPats (unLoc fam_tc_name) (tyConKind fam_tc) pats
-                     (kcDataDefn (unLoc fam_tc_name) defn) $ 
+                     (kcDataDefn defn) $ 
            \tvs' pats' res_kind -> do
 
        { -- Check that left-hand side contains no type family applications
@@ -723,6 +727,7 @@ tcDataFamInstDecl mb_clsinfo
       , not (tv `elemVarSet` tyVarsOfTypes pats)
       = go tvs pats
     go tvs pats = (reverse tvs, reverse pats)
+
 \end{code}
 
 Note [Eta reduction for data family axioms]
@@ -777,7 +782,7 @@ tcInstDecls2 tycl_decls inst_decls
         ; let dm_ids = collectHsBindsBinders dm_binds
               -- Add the default method Ids (again)
               -- See Note [Default methods and instances]
-        ; inst_binds_s <- tcExtendLetEnv TopLevel dm_ids $
+        ; inst_binds_s <- tcExtendLetEnv TopLevel TopLevel dm_ids $
                           mapM tcInstDecl2 inst_decls
 
           -- Done
@@ -885,9 +890,9 @@ tcInstDecl2 (InstInfo { iSpec = ispec, iBinds = ibinds })
                                   , abs_ev_vars = dfun_ev_vars
                                   , abs_exports = [export]
                                   , abs_ev_binds = sc_binds
-                                  , abs_binds = unitBag dict_bind }
+                                  , abs_binds = unitBag (Generated, dict_bind) }
 
-       ; return (unitBag (L loc main_bind) `unionBags`
+       ; return (unitBag (Generated, L loc main_bind) `unionBags`
                  listToBag meth_binds)
        }
  where
@@ -980,14 +985,12 @@ misplacedInstSig name hs_ty
   = vcat [ hang (ptext (sLit "Illegal type signature in instance declaration:"))
               2 (hang (pprPrefixName name)
                     2 (dcolon <+> ppr hs_ty))
-         , ptext (sLit "(Use -XInstanceSigs to allow this)") ]
+         , ptext (sLit "(Use InstanceSigs to allow this)") ]
 
 ------------------------------
 tcSpecInstPrags :: DFunId -> InstBindings Name
                 -> TcM ([Located TcSpecPrag], PragFun)
-tcSpecInstPrags _ (NewTypeDerived {})
-  = return ([], \_ -> [])
-tcSpecInstPrags dfun_id (VanillaInst binds uprags _)
+tcSpecInstPrags dfun_id (InstBindings { ib_binds = binds, ib_pragmas = uprags })
   = do { spec_inst_prags <- mapM (wrapLocM (tcSpecInst dfun_id)) $
                             filter isSpecInstLSig uprags
              -- The filter removes the pragmas for methods
@@ -1168,18 +1171,26 @@ tcInstanceMethods :: DFunId -> Class -> [TcTyVar]
                   -> ([Located TcSpecPrag], PragFun)
                   -> [(Id, DefMeth)]
                   -> InstBindings Name
-                  -> TcM ([Id], [LHsBind Id])
+                  -> TcM ([Id], [(Origin, LHsBind Id)])
         -- The returned inst_meth_ids all have types starting
         --      forall tvs. theta => ...
 tcInstanceMethods dfun_id clas tyvars dfun_ev_vars inst_tys
                   (spec_inst_prags, prag_fn)
-                  op_items (VanillaInst binds sigs standalone_deriv)
+                  op_items (InstBindings { ib_binds = binds
+                                         , ib_pragmas = sigs
+                                         , ib_extensions = exts
+                                         , ib_standalone_deriving
+                                              = standalone_deriv })
   = do { traceTc "tcInstMeth" (ppr sigs $$ ppr binds)
        ; let hs_sig_fn = mkHsSigFun sigs
-       ; mapAndUnzipM (tc_item hs_sig_fn) op_items }
+       ; checkMinimalDefinition
+       ; set_exts exts $ mapAndUnzipM (tc_item hs_sig_fn) op_items }
   where
+    set_exts :: [ExtensionFlag] -> TcM a -> TcM a
+    set_exts es thing = foldr setXOptM thing es
+    
     ----------------------
-    tc_item :: HsSigFun -> (Id, DefMeth) -> TcM (Id, LHsBind Id)
+    tc_item :: HsSigFun -> (Id, DefMeth) -> TcM (Id, (Origin, LHsBind Id))
     tc_item sig_fn (sel_id, dm_info)
       = case findMethodBind (idName sel_id) binds of
             Just (user_bind, bndr_loc) 
@@ -1188,10 +1199,10 @@ tcInstanceMethods dfun_id clas tyvars dfun_ev_vars inst_tys
                            ; tc_default sig_fn sel_id dm_info }
 
     ----------------------
-    tc_body :: HsSigFun -> Id -> Bool -> LHsBind Name
-            -> SrcSpan -> TcM (TcId, LHsBind Id)
+    tc_body :: HsSigFun -> Id -> Bool -> (Origin, LHsBind Name)
+            -> SrcSpan -> TcM (TcId, (Origin, LHsBind Id))
     tc_body sig_fn sel_id generated_code rn_bind bndr_loc
-      = add_meth_ctxt sel_id generated_code rn_bind $
+      = add_meth_ctxt sel_id generated_code (snd rn_bind) $
         do { traceTc "tc_item" (ppr sel_id <+> ppr (idType sel_id))
            ; (meth_id, local_meth_sig) <- setSrcSpan bndr_loc $
                                           mkMethIds sig_fn clas tyvars dfun_ev_vars
@@ -1207,21 +1218,21 @@ tcInstanceMethods dfun_id clas tyvars dfun_ev_vars inst_tys
            ; return (meth_id1, bind) }
 
     ----------------------
-    tc_default :: HsSigFun -> Id -> DefMeth -> TcM (TcId, LHsBind Id)
+    tc_default :: HsSigFun -> Id -> DefMeth -> TcM (TcId, (Origin, LHsBind Id))
 
     tc_default sig_fn sel_id (GenDefMeth dm_name)
       = do { meth_bind <- mkGenericDefMethBind clas inst_tys sel_id dm_name
            ; tc_body sig_fn sel_id False {- Not generated code? -} 
-                     meth_bind inst_loc }
+                     (Generated, meth_bind) inst_loc }
 
     tc_default sig_fn sel_id NoDefMeth     -- No default method at all
       = do { traceTc "tc_def: warn" (ppr sel_id)
-           ; warnMissingMethodOrAT "method" (idName sel_id)
            ; (meth_id, _) <- mkMethIds sig_fn clas tyvars dfun_ev_vars
                                        inst_tys sel_id
            ; dflags <- getDynFlags
-           ; return (meth_id, mkVarBind meth_id $
-                              mkLHsWrap lam_wrapper (error_rhs dflags)) }
+           ; return (meth_id,
+                     (Generated, mkVarBind meth_id $
+                                 mkLHsWrap lam_wrapper (error_rhs dflags))) }
       where
         error_rhs dflags = L inst_loc $ HsApp error_fun (error_msg dflags)
         error_fun    = L inst_loc $ wrapId (WpTyApp meth_tau) nO_METHOD_BINDING_ERROR_ID
@@ -1263,13 +1274,13 @@ tcInstanceMethods dfun_id clas tyvars dfun_ev_vars inst_tys
                  bind = AbsBinds { abs_tvs = tyvars, abs_ev_vars = dfun_ev_vars
                                  , abs_exports = [export]
                                  , abs_ev_binds = EvBinds (unitBag self_ev_bind)
-                                 , abs_binds    = unitBag meth_bind }
+                                 , abs_binds    = unitBag (Generated, meth_bind) }
              -- Default methods in an instance declaration can't have their own
              -- INLINE or SPECIALISE pragmas. It'd be possible to allow them, but
              -- currently they are rejected with
              --           "INLINE pragma lacks an accompanying binding"
 
-           ; return (meth_id1, L inst_loc bind) }
+           ; return (meth_id1, (Generated, L inst_loc bind)) }
 
     ----------------------
     mk_meth_spec_prags :: Id -> [LTcSpecPrag] -> TcSpecPrags
@@ -1301,81 +1312,15 @@ tcInstanceMethods dfun_id clas tyvars dfun_ev_vars inst_tys
       | generated_code = addLandmarkErrCtxt (derivBindCtxt sel_id clas inst_tys rn_bind) thing
       | otherwise      = thing
 
+    ----------------------
 
-tcInstanceMethods dfun_id clas tyvars dfun_ev_vars inst_tys
-                  _ op_items (NewTypeDerived coi _)
+    -- check if one of the minimal complete definitions is satisfied
+    checkMinimalDefinition
+      = whenIsJust (isUnsatisfied methodExists (classMinimalDef clas)) $
+          warnUnsatisifiedMinimalDefinition
+      where
+      methodExists meth = isJust (findMethodBind meth binds)
 
--- Running example:
---   class Show b => Foo a b where
---     op :: a -> b -> b
---   newtype N a = MkN (Tree [a])
---   deriving instance (Show p, Foo Int p) => Foo Int (N p)
---               -- NB: standalone deriving clause means
---               --     that the contex is user-specified
--- Hence op :: forall a b. Foo a b => a -> b -> b
---
--- We're going to make an instance like
---   instance (Show p, Foo Int p) => Foo Int (N p)
---      op = $copT
---
---   $copT :: forall p. (Show p, Foo Int p) => Int -> N p -> N p
---   $copT p (d1:Show p) (d2:Foo Int p)
---     = op Int (Tree [p]) rep_d |> op_co
---     where
---       rep_d :: Foo Int (Tree [p]) = ...d1...d2...
---       op_co :: (Int -> Tree [p] -> Tree [p]) ~ (Int -> T p -> T p)
--- We get op_co by substituting [Int/a] and [co/b] in type for op
--- where co : [p] ~ T p
---
--- Notice that the dictionary bindings "..d1..d2.." must be generated
--- by the constraint solver, since the <context> may be
--- user-specified.
-
-  = do { rep_d_stuff <- checkConstraints InstSkol tyvars dfun_ev_vars $
-                        emitWanted ScOrigin rep_pred
-
-       ; mapAndUnzipM (tc_item rep_d_stuff) op_items }
-  where
-     loc = getSrcSpan dfun_id
-     Just (init_inst_tys, _) = snocView inst_tys
-     rep_ty   = pFst (tcCoercionKind co)  -- [p]
-     rep_pred = mkClassPred clas (init_inst_tys ++ [rep_ty])
-
-     -- co : [p] ~ T p
-     co = mkTcSymCo (mkTcInstCos coi (mkTyVarTys tyvars))
-     sig_fn = emptyHsSigs
-
-     ----------------
-     tc_item :: (TcEvBinds, EvVar) -> (Id, DefMeth) -> TcM (TcId, LHsBind TcId)
-     tc_item (rep_ev_binds, rep_d) (sel_id, _)
-       = do { (meth_id, local_meth_sig) <- mkMethIds sig_fn clas tyvars dfun_ev_vars
-                                                     inst_tys sel_id
-
-            ; let meth_rhs      = wrapId (mk_op_wrapper sel_id rep_d) sel_id
-                  local_meth_id = sig_id local_meth_sig
-                  meth_bind = mkVarBind local_meth_id (L loc meth_rhs)
-                  export = ABE { abe_wrap = idHsWrapper, abe_poly = meth_id
-                               , abe_mono = local_meth_id, abe_prags = noSpecPrags }
-                  bind = AbsBinds { abs_tvs = tyvars, abs_ev_vars = dfun_ev_vars
-                                   , abs_exports = [export]
-                                   , abs_ev_binds = rep_ev_binds
-                                   , abs_binds = unitBag $ meth_bind }
-
-            ; return (meth_id, L loc bind) }
-
-     ----------------
-     mk_op_wrapper :: Id -> EvVar -> HsWrapper
-     mk_op_wrapper sel_id rep_d
-       = WpCast (liftTcCoSubstWith sel_tvs (map mkTcReflCo init_inst_tys ++ [co])
-                                   local_meth_ty)
-         <.> WpEvApp (EvId rep_d)
-         <.> mkWpTyApps (init_inst_tys ++ [rep_ty])
-       where
-         (sel_tvs, sel_rho) = tcSplitForAllTys (idType sel_id)
-         (_, local_meth_ty) = tcSplitPredFunTy_maybe sel_rho
-                              `orElse` pprPanic "tcInstanceMethods" (ppr sel_id)
-
-------------------
 mkGenericDefMethBind :: Class -> [Type] -> Id -> Name -> TcM (LHsBind Name)
 mkGenericDefMethBind clas inst_tys sel_id dm_name
   = 	-- A generic default method
@@ -1411,6 +1356,16 @@ warnMissingMethodOrAT what name
                                         -- Don't warn about _foo methods
                 (ptext (sLit "No explicit") <+> text what <+> ptext (sLit "or default declaration for")
                  <+> quotes (ppr name)) }
+
+warnUnsatisifiedMinimalDefinition :: ClassMinimalDef -> TcM ()
+warnUnsatisifiedMinimalDefinition mindef
+  = do { warn <- woptM Opt_WarnMissingMethods
+       ; warnTc warn message
+       }
+  where
+    message = vcat [ptext (sLit "No explicit implementation for")
+                   ,nest 2 $ pprBooleanFormulaNice mindef
+                   ]
 \end{code}
 
 Note [Export helper functions]
@@ -1533,7 +1488,8 @@ instDeclCtxt2 dfun_ty
     (_,_,cls,tys) = tcSplitDFunTy dfun_ty
 
 inst_decl_ctxt :: SDoc -> SDoc
-inst_decl_ctxt doc = ptext (sLit "In the instance declaration for") <+> quotes doc
+inst_decl_ctxt doc = hang (ptext (sLit "In the instance declaration for"))
+                        2 (quotes doc)
 
 badBootFamInstDeclErr :: SDoc
 badBootFamInstDeclErr
@@ -1558,7 +1514,7 @@ badFamInstDecl :: Located Name -> SDoc
 badFamInstDecl tc_name
   = vcat [ ptext (sLit "Illegal family instance for") <+>
            quotes (ppr tc_name)
-         , nest 2 (parens $ ptext (sLit "Use -XTypeFamilies to allow indexed type families")) ]
+         , nest 2 (parens $ ptext (sLit "Use TypeFamilies to allow indexed type families")) ]
 
 notOpenFamily :: TyCon -> SDoc
 notOpenFamily tc

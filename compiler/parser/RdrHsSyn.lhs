@@ -507,14 +507,10 @@ checkTyVars pp_what equals_or_where tc tparms = do { tvs <- mapM chk tparms
                                  ; return (mkHsQTvs tvs) }
   where
         -- Check that the name space is correct!
-    chk (L l (HsRoleAnnot (L _ (HsKindSig (L _ (HsTyVar tv)) k)) r))
-        | isRdrTyVar tv    = return (L l (HsTyVarBndr tv (Just k) (Just r)))
     chk (L l (HsKindSig (L _ (HsTyVar tv)) k))
-        | isRdrTyVar tv    = return (L l (HsTyVarBndr tv (Just k) Nothing))
-    chk (L l (HsRoleAnnot (L _ (HsTyVar tv)) r))
-        | isRdrTyVar tv    = return (L l (HsTyVarBndr tv Nothing (Just r)))
+        | isRdrTyVar tv    = return (L l (KindedTyVar tv k))
     chk (L l (HsTyVar tv))
-        | isRdrTyVar tv    = return (L l (HsTyVarBndr tv Nothing Nothing))
+        | isRdrTyVar tv    = return (L l (UserTyVar tv))
     chk t@(L l _)
         = parseErrorSDoc l $
           vcat [ ptext (sLit "Unexpected type") <+> quotes (ppr t)

@@ -1750,7 +1750,7 @@ getGhciStepIO = do
 
         stepTy :: LHsType Name    -- Renamed, so needs all binders in place
         stepTy = noLoc $ HsForAllTy Implicit
-                            (HsQTvs { hsq_tvs = [noLoc (HsTyVarBndr a_tv Nothing Nothing)]
+                            (HsQTvs { hsq_tvs = [noLoc (UserTyVar a_tv)]
                                     , hsq_kvs = [] })
                             (noLoc [])
                             (nlHsFunTy ghciM ioM)

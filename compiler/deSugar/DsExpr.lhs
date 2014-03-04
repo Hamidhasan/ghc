@@ -56,15 +56,9 @@ import SrcLoc
 import Util
 import Bag
 import Outputable
-import Literal
-import TyCon
 import FastString
 
 import Control.Monad
-import Data.Int
-import Data.Traversable (traverse)
-import Data.Typeable (typeOf)
-import Data.Word
 \end{code}
 
 
@@ -219,10 +213,7 @@ dsExpr (HsLamCase arg matches)
        ; return $ Lam arg_var $ bindNonRec discrim_var (Var arg_var) matching_code }
 
 dsExpr (HsApp fun arg)
-  = do ds <- mkCoreAppDs <$> dsLExpr fun <*>  dsLExpr arg
-       warn_overflowed_literals <- woptM Opt_WarnOverflowedLiterals
-       when warn_overflowed_literals $ warnAboutOverflowedLiterals ds
-       return ds
+  = mkCoreAppDs <$> dsLExpr fun <*>  dsLExpr arg
 
 dsExpr (HsUnboundVar _) = panic "dsExpr: HsUnboundVar"
 \end{code}

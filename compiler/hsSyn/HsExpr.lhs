@@ -433,7 +433,6 @@ So we use Nothing to mean "use the old built-in typing rule".
 \begin{code}
 instance OutputableBndr id => Outputable (HsExpr id) where
     ppr expr = pprExpr expr
-
 \end{code}
 
 \begin{code}

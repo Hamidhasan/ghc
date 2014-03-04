@@ -307,7 +307,7 @@ mk_extra_tvs :: Located Name -> LHsTyVarBndrs Name
 --    k1 -> .. -> kn -> *
 -- Return type variables [tv1:k1, tv2:k2, .., tvn:kn]
 mk_extra_tvs tc tvs defn
-  | HsDataDefn { dd_kindSig = Just hs_kind } <- defn
+  | HsDataDefn { dd_kindSig = hs_kind } <- defn
   = do { extra_tvs <- go hs_kind
        ; return (tvs { hsq_tvs = hsq_tvs tvs ++ extra_tvs }) }
   | otherwise
@@ -318,7 +318,7 @@ mk_extra_tvs tc tvs defn
       = do { uniq <- newUnique
            ; let { occ = mkTyVarOccFS (fsLit "t")
                  ; nm = mkInternalName uniq occ loc
-                 ; hs_tv = L loc (HsTyVarBndr nm (Just kind) Nothing) }
+                 ; hs_tv = L loc (KindedTyVar nm kind) }
            ; hs_tvs <- go rest
            ; return (hs_tv : hs_tvs) }
 
@@ -745,14 +745,8 @@ repTyVarBndrWithKind :: LHsTyVarBndr Name
                      -> Core TH.Name -> DsM (Core TH.TyVarBndr)
 repTyVarBndrWithKind (L _ (UserTyVar _)) nm
   = repPlainTV nm
-repTyVarBndrWithKind (L _ (HsTyVarBndr _ (Just ki) Nothing)) nm
+repTyVarBndrWithKind (L _ (KindedTyVar _ ki)) nm
   = repLKind ki >>= repKindedTV nm
-repTyVarBndrWithKind (L _ (HsTyVarBndr _ Nothing (Just r))) nm
-  = repRole r >>= repRoledTV nm
-repTyVarBndrWithKind (L _ (HsTyVarBndr _ (Just ki) (Just r))) nm
-  = do { ki' <- repLKind ki
-       ; r'  <- repRole r
-       ; repKindedRoledTV nm ki' r' }
 
 -- represent a type context
 --
@@ -1881,13 +1875,6 @@ repPlainTV (MkC nm) = rep2 plainTVName [nm]
 
 repKindedTV :: Core TH.Name -> Core TH.Kind -> DsM (Core TH.TyVarBndr)
 repKindedTV (MkC nm) (MkC ki) = rep2 kindedTVName [nm, ki]
-
-repRoledTV :: Core TH.Name -> Core TH.Role -> DsM (Core TH.TyVarBndr)
-repRoledTV (MkC nm) (MkC r) = rep2 roledTVName [nm, r]
-
-repKindedRoledTV :: Core TH.Name -> Core TH.Kind -> Core TH.Role
-                 -> DsM (Core TH.TyVarBndr)
-repKindedRoledTV (MkC nm) (MkC k) (MkC r) = rep2 kindedRoledTVName [nm, k, r]
 
 repKVar :: Core TH.Name -> DsM (Core TH.Kind)
 repKVar (MkC s) = rep2 varKName [s]

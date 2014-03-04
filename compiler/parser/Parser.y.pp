@@ -33,7 +33,6 @@ import Type             ( funTyCon )
 import ForeignCall
 import OccName          ( varName, dataName, tcClsName, tvName )
 import DataCon          ( DataCon, dataConName )
-import CoAxiom          ( Role(..) )
 import SrcLoc
 import Module
 import Kind             ( Kind, liftedTypeKind, unliftedTypeKind, mkArrowKind )
@@ -55,12 +54,6 @@ import Control.Monad    ( mplus )
 }
 
 {-
------------------------------------------------------------------------------
-3 June 2013
-
-Conflicts: 49 shift/reduce
-           1 reduce/reduce
-  
 -----------------------------------------------------------------------------
 12 October 2012
 
@@ -288,7 +281,7 @@ incorrect.
  '<-'           { L _ ITlarrow }
  '->'           { L _ ITrarrow }
  '@'            { L _ ITat    }
- ' @'           { L _ ITatapp } -- For type application '@Int'
+ ' @'           { L _ ITatapp }
  '~'            { L _ ITtilde }
  '~#'           { L _ ITtildehsh }
  '=>'           { L _ ITdarrow }
@@ -1154,7 +1147,6 @@ atype :: { LHsType RdrName }
         | '[:' ctype ':]'                { LL $ HsPArrTy  $2 }
         | '(' ctype ')'                  { LL $ HsParTy   $2 }
         | '(' ctype '::' kind ')'        { LL $ HsKindSig $2 $4 }
-        | atype '@' role                 { LL $ HsRoleAnnot $1 (unLoc $3) }
         | quasiquote                     { L1 (HsQuasiQuoteTy (unLoc $1)) }
         | '$(' exp ')'                   { LL $ mkHsSpliceTy $2 }
         | TH_ID_SPLICE                   { LL $ mkHsSpliceTy $ L1 $ HsVar $
@@ -1192,8 +1184,8 @@ tv_bndrs :: { [LHsTyVarBndr RdrName] }
          | {- empty -}                  { [] }
 
 tv_bndr :: { LHsTyVarBndr RdrName }
-        : tyvar                         { L1 (HsTyVarBndr (unLoc $1) Nothing Nothing) }
-        | '(' tyvar '::' kind ')'       { LL (HsTyVarBndr (unLoc $2) (Just $4) Nothing) }
+        : tyvar                         { L1 (UserTyVar (unLoc $1)) }
+        | '(' tyvar '::' kind ')'       { LL (KindedTyVar (unLoc $2) $4) }
 
 fds :: { Located [Located (FunDep RdrName)] }
         : {- empty -}                   { noLoc [] }
@@ -1210,11 +1202,6 @@ fd :: { Located (FunDep RdrName) }
 varids0 :: { Located [RdrName] }
         : {- empty -}                   { noLoc [] }
         | varids0 tyvar                 { LL (unLoc $2 : unLoc $1) }
-
-role :: { Located Role }
-          : 'N'                         { LL Nominal }
-          | 'R'                         { LL Representational }
-          | 'P'                         { LL Phantom }
 
 -----------------------------------------------------------------------------
 -- Kinds
@@ -1547,10 +1534,10 @@ hpc_annot :: { Located (FastString,(Int,Int),(Int,Int)) }
                                                  }
 
 fexp    :: { LHsExpr RdrName }
-        : fexp aexp                            { LL $ HsApp $1 $2 }
-        | aexp                                 { $1 }
+        : fexp aexp                     { LL $ HsApp $1 $2 }
+        | aexp                          { $1 }
 
-aexp    :: { LHsExpr RdrName }                     
+aexp    :: { LHsExpr RdrName }
         : qvar '@' aexp                 { LL $ EAsPat $1 $3 }
         | '~' aexp                      { LL $ ELazyPat $2 }  
         | aexp1                         { $1 }
@@ -2023,7 +2010,7 @@ qtycon :: { Located RdrName }   -- Qualified or unqualified
         | tycon                         { $1 }
 
 tycon   :: { Located RdrName }  -- Unqualified
-        : upcase_id                     { L1 $! mkUnqual tcClsName (unLoc $1) }
+        : CONID                         { L1 $! mkUnqual tcClsName (getCONID $1) }
 
 qtyconsym :: { Located RdrName }
         : QCONSYM                       { L1 $! mkQual tcClsName (getQCONSYM $1) }
@@ -2173,7 +2160,7 @@ qconid :: { Located RdrName }   -- Qualified or unqualified
         | PREFIXQCONSYM         { L1 $! mkQual dataName (getPREFIXQCONSYM $1) }
 
 conid   :: { Located RdrName }
-        : upcase_id             { L1 $ mkUnqual dataName (unLoc $1) }
+        : CONID                 { L1 $ mkUnqual dataName (getCONID $1) }
 
 qconsym :: { Located RdrName }  -- Qualified or unqualified
         : consym                { $1 }
@@ -2210,7 +2197,7 @@ close :: { () }
 -- Miscellaneous (mostly renamings)
 
 modid   :: { Located ModuleName }
-        : upcase_id             { L1 $ mkModuleNameFS (unLoc $1) }
+        : CONID                 { L1 $ mkModuleNameFS (getCONID $1) }
         | QCONID                { L1 $ let (mod,c) = getQCONID $1 in
                                   mkModuleNameFS
                                    (mkFastString
@@ -2220,12 +2207,6 @@ modid   :: { Located ModuleName }
 commas :: { Int }   -- One or more commas
         : commas ','                    { $1 + 1 }
         | ','                           { 1 }
-
-upcase_id :: { Located FastString }
-        : CONID                         { L1 $! getCONID $1 }
-        | 'N'                           { L1 (fsLit "N") }
-        | 'R'                           { L1 (fsLit "R") }
-        | 'P'                           { L1 (fsLit "P") }
 
 -----------------------------------------------------------------------------
 -- Documentation comments

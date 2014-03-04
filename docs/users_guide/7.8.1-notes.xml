@@ -112,24 +112,8 @@
 
         <listitem>
             <para>
-                It is now possible to declare a 'closed' <literal>type
-                family</literal> when using the
-                <literal>TypeFamilies</literal> extension. A closed
-                <literal>type family</literal> cannot have any
-                instances created other than the ones in its
-                definition.
-
-                TODO FIXME: reference.
-           </para>
-       </listitem>
-
-       <listitem>
-           <para>
-                Use of the <literal>GeneralizedNewtypeDeriving</literal>
-                extension is now subject to <emphasis>role checking</emphasis>,
-                to ensure type safety of the derived instances. As this change
-                increases the type safety of GHC, it is possible that some code
-                that previously compiled will no longer work.
+                GHC now supports overloading list literals using the new
+                <literal>OverloadedLists</literal> extension.
 
                 For more information, see <xref linkend="overloaded-lists"/>.
            </para>
@@ -497,8 +481,6 @@
                </para>
            </listitem>
        </itemizedlist>
-
-
     </sect3>
 
     <sect3>
@@ -535,14 +517,6 @@
                     literals, enabled by
                     <literal>-fwarn-overflowed-literals</literal>. It
                     is enabled by default.
-               </para>
-           </listitem>
-            <listitem>
-                <para>
-                    GHC now supports warning about overflow of integer
-                    literals, enabled by
-                    <literal>-fwarn-overflowed-literals</literal>. It
-                    is enabled by default
                </para>
            </listitem>
             <listitem>

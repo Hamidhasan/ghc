@@ -16,11 +16,6 @@ module SMRep (
         WordOff, ByteOff,
         roundUpToWords,
 
-#if __GLASGOW_HASKELL__ > 706
-        -- ** Immutable arrays of StgWords
-        UArrayStgWord, listArray, toByteArray,
-#endif
-
         -- * Closure repesentation
         SMRep(..), -- CmmInfo sees the rep; no one else does
         IsStatic,
@@ -54,12 +49,6 @@ import DynFlags
 import Outputable
 import Platform
 import FastString
-import qualified Data.Array.Base as Array
-
-#if __GLASGOW_HASKELL__ > 706
-import GHC.Base ( ByteArray# )
-import Data.Ix
-#endif
 
 import Data.Char( ord )
 import Data.Word

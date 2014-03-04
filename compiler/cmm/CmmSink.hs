@@ -409,8 +409,8 @@ tryToInline dflags live node assigs = go usages node [] assigs
 
         discard = go usages node skipped rest
 
-        dont_inline        = keep node     -- don't inline the assignment, keep it
-        inline_and_keep    = keep inl_node --       inline the assignment, keep it
+        dont_inline        = keep node  -- don't inline the assignment, keep it
+        inline_and_keep    = keep inl_node -- inline the assignment, keep it
 
         keep node' = (final_node, a : rest')
           where (final_node, rest') = go usages' node' (l:skipped) rest

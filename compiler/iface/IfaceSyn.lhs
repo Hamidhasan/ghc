@@ -307,15 +307,6 @@ instance Binary IfaceAT where
         defs <- get bh
         return (IfaceAT dec defs)
 
-instance Binary IfaceAT where
-    put_ bh (IfaceAT dec defs) = do
-        put_ bh dec
-        put_ bh defs
-    get bh = do
-        dec  <- get bh
-        defs <- get bh
-        return (IfaceAT dec defs)
-
 instance Outputable IfaceAxBranch where
   ppr = pprAxBranch Nothing
 
@@ -1064,7 +1055,6 @@ pprIfaceDecl (IfaceForeign {ifName = tycon})
 
 pprIfaceDecl (IfaceSyn {ifName = tycon,
                         ifTyVars = tyvars,
-                        ifRoles = roles,
                         ifSynRhs = IfaceSynonymTyCon mono_ty})
   = hang (ptext (sLit "type") <+> pprIfaceDeclHead [] tycon tyvars)
        2 (vcat [equals <+> ppr mono_ty])
@@ -1160,10 +1150,10 @@ instance Outputable IfaceAT where
              , ppUnless (null defs) $ nest 2 $
                ptext (sLit "Defaults:") <+> vcat (map ppr defs) ]
 
-pprIfaceDeclHead :: IfaceContext -> OccName -> [IfaceTvBndr] -> [Role] -> SDoc
-pprIfaceDeclHead context thing tyvars roles
+pprIfaceDeclHead :: IfaceContext -> OccName -> [IfaceTvBndr] -> SDoc
+pprIfaceDeclHead context thing tyvars
   = hsep [pprIfaceContext context, parenSymOcc thing (ppr thing),
-          pprIfaceTvBndrsRoles tyvars roles]
+          pprIfaceTvBndrs tyvars]
 
 pp_condecls :: OccName -> IfaceConDecls -> SDoc
 pp_condecls _  (IfAbstractTyCon {}) = empty

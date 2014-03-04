@@ -1589,7 +1589,6 @@ mkNewTypeEqn dflags tvs
            && arity_ok
            && eta_ok
            && ats_ok
-           && roles_ok
 --         && not (isRecursiveTyCon tycon)      -- Note [Recursive newtypes]
 
         arity_ok = length cls_tys + 1 == classArity cls
@@ -1610,17 +1609,10 @@ mkNewTypeEqn dflags tvs
                -- currently generate type 'instance' decls; and cannot do
                -- so for 'data' instance decls
 
-        roles_ok = let cls_roles = tyConRoles (classTyCon cls) in
-                   not (null cls_roles) && last cls_roles /= Nominal
-               -- We must make sure that the class definition (and all its
-               -- members) never pattern-match on the last parameter.
-               -- See Trac #1496 and Note [Roles] in Coercion
-
         cant_derive_err
            = vcat [ ppUnless arity_ok arity_msg
                   , ppUnless eta_ok eta_msg
-                  , ppUnless ats_ok ats_msg
-                  , ppUnless roles_ok roles_msg ]
+                  , ppUnless ats_ok ats_msg ]
         arity_msg = quotes (ppr (mkClassPred cls cls_tys)) <+> ptext (sLit "does not have arity 1")
         eta_msg   = ptext (sLit "cannot eta-reduce the representation type enough")
         ats_msg   = ptext (sLit "the class has associated types")

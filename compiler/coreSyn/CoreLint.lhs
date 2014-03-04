@@ -191,18 +191,6 @@ lintExpr vars expr
     (_warns, errs) = initL (addLoc TopLevelBindings $
                             addInScopeVars vars     $
                             lintCoreExpr expr)
-
-lintExpr :: [Var]		-- Treat these as in scope
-	 -> CoreExpr
-	 -> Maybe MsgDoc	-- Nothing => OK
-
-lintExpr vars expr
-  | isEmptyBag errs = Nothing
-  | otherwise       = Just (pprMessageBag errs)
-  where
-    (_warns, errs) = initL (addLoc TopLevelBindings $
-                            addInScopeVars vars	    $
-                            lintCoreExpr expr)
 \end{code}
 
 %************************************************************************

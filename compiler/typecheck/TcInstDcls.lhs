@@ -61,7 +61,6 @@ import Id
 import MkId
 import Name
 import NameSet
-import NameEnv
 import Outputable
 import SrcLoc
 import Util
@@ -689,7 +688,7 @@ tcDataFamInstDecl mb_clsinfo
        ; let orig_res_ty = mkTyConApp fam_tc pats'
 
        ; (rep_tc, fam_inst) <- fixM $ \ ~(rec_rep_tc, _) ->
-           do { data_cons <- tcConDecls new_or_data (unLoc fam_tc_name) rec_rep_tc
+           do { data_cons <- tcConDecls new_or_data rec_rep_tc
                                        (tvs', orig_res_ty) cons
               ; tc_rhs <- case new_or_data of
                      DataType -> return (mkDataTyConRhs data_cons)
@@ -714,8 +713,7 @@ tcDataFamInstDecl mb_clsinfo
               ; return (rep_tc, fam_inst) }
 
          -- Remember to check validity; no recursion to worry about here
-       ; let role_annots = unitNameEnv rep_tc_name (repeat Nothing)
-       ; checkValidTyCon rep_tc role_annots
+       ; checkValidTyCon rep_tc
        ; return fam_inst } }
   where
     -- See Note [Eta reduction for data family axioms]

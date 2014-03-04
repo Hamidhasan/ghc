@@ -737,14 +737,6 @@
             <entry><option>-XNoAllowAmbiguousTypes</option></entry>
           </row>
           <row>
-            <entry><option>-XAllowAmbiguousTypes</option></entry>
-            <entry>Allow the user to write <link linkend="ambiguity">ambiguous types</link>, 
-                   and the type inference engine to infer them.
-                </entry>
-            <entry>dynamic</entry>
-            <entry><option>-XNoAllowAmbiguousTypes</option></entry>
-          </row>
-          <row>
             <entry><option>-XArrows</option></entry>
             <entry>Enable <link linkend="arrow-notation">arrow
                 notation</link> extension</entry>

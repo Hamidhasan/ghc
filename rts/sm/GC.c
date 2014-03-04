@@ -662,10 +662,6 @@ GarbageCollect (nat collect_gen,
 
   resetNurseries();
 
-  if (major_gc) {
-      checkUnload (gct->scavenged_static_objects);
-  }
-
  // mark the garbage collected CAFs as dead
 #if defined(DEBUG)
   if (major_gc) { gcCAFs(); }

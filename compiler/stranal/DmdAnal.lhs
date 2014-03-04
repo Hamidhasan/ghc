@@ -732,13 +732,6 @@ The typechecker can tie recursive knots involving dfuns, so we do the
 conservative thing and refrain from strictifying a dfun's argument
 dictionaries.
 
-Note [do not strictify the argument dictionaries of a dfun]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The typechecker can tie recursive knots involving dfuns, so we do the
-conservative thing and refrain from strictifying a dfun's argument
-dictionaries.
-
 \begin{code}
 annotateBndr :: AnalEnv -> DmdType -> Var -> (DmdType, Var)
 -- The returned env has the var deleted
@@ -750,13 +743,6 @@ annotateBndr env dmd_ty var
   | otherwise   = (dmd_ty', set_idDemandInfo env var dmd')
   where
     (dmd_ty', dmd) = peelFV dmd_ty var
-
-    dmd' | gopt Opt_DictsStrict (ae_dflags env)
-             -- We never want to strictify a recursive let. At the moment
-             -- annotateBndr is only call for non-recursive lets; if that
-             -- changes, we need a RecFlag parameter and another guard here.
-         = strictifyDictDmd (idType var) dmd
-         | otherwise = dmd
 
     dmd' | gopt Opt_DictsStrict (ae_dflags env)
              -- We never want to strictify a recursive let. At the moment
@@ -799,12 +785,6 @@ annotateLamIdBndr env arg_of_dfun dmd_ty one_shot id
 
     main_ty = addDemand dmd dmd_ty'
     (dmd_ty', dmd) = peelFV dmd_ty id
-
-    dmd' | gopt Opt_DictsStrict (ae_dflags env),
-           -- see Note [do not strictify the argument dictionaries of a dfun]
-           not arg_of_dfun
-         = strictifyDictDmd (idType id) dmd
-         | otherwise = dmd
 
     dmd' | gopt Opt_DictsStrict (ae_dflags env),
            -- see Note [do not strictify the argument dictionaries of a dfun]

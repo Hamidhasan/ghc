@@ -46,7 +46,6 @@ import Name( Name )
 import RdrName( RdrName )
 import DataCon( HsBang(..) )
 import Type
-import TyCon ( Role(..) )
 import HsDoc
 import BasicTypes
 import SrcLoc
@@ -226,9 +225,6 @@ data HsType name
 
   | HsKindSig           (LHsType name)  -- (ty :: kind)
                         (LHsKind name)  -- A type with a kind signature
-
-  | HsRoleAnnot         (LHsType name)  -- ty@role, seen only right after parsing
-                        Role
 
   | HsQuasiQuoteTy      (HsQuasiQuote name)
 
@@ -428,7 +424,8 @@ hsExplicitTvs _                                   = []
 
 ---------------------
 hsTyVarName :: HsTyVarBndr name -> name
-hsTyVarName (HsTyVarBndr n _ _) = n
+hsTyVarName (UserTyVar n)     = n
+hsTyVarName (KindedTyVar n _) = n
 
 hsLTyVarName :: LHsTyVarBndr name -> name
 hsLTyVarName = hsTyVarName . unLoc
@@ -649,7 +646,6 @@ ppr_mono_ty _    (HsTupleTy con tys) = tupleParens std_con (interpp'SP tys)
                     HsUnboxedTuple -> UnboxedTuple
                     _              -> BoxedTuple
 ppr_mono_ty _    (HsKindSig ty kind) = parens (ppr_mono_lty pREC_TOP ty <+> dcolon <+> ppr kind)
-ppr_mono_ty _    (HsRoleAnnot ty r)  = ppr ty <> char '@' <> ppr r
 ppr_mono_ty _    (HsListTy ty)       = brackets (ppr_mono_lty pREC_TOP ty)
 ppr_mono_ty _    (HsPArrTy ty)       = paBrackets (ppr_mono_lty pREC_TOP ty)
 ppr_mono_ty prec (HsIParamTy n ty)   = maybeParen prec pREC_FUN (ppr n <+> dcolon <+> ppr_mono_lty pREC_TOP ty)

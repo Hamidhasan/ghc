@@ -65,7 +65,6 @@ import Maybes
 import OrdList
 import Bag
 import BasicTypes hiding ( TopLevel )
-import Pair
 import DynFlags
 import FastString
 import ErrUtils( MsgDoc )
@@ -747,7 +746,7 @@ dsEvTerm (EvId v) = return (Var v)
 
 dsEvTerm (EvCast tm co) 
   = do { tm' <- dsEvTerm tm
-       ; dsTcCoercion Representational co $ mkCast tm' }
+       ; dsTcCoercion co $ mkCast tm' }
                         -- 'v' is always a lifted evidence variable so it is
                         -- unnecessary to call varToCoreExpr v here.
 
@@ -755,7 +754,7 @@ dsEvTerm (EvDFunApp df tys tms) = do { tms' <- mapM dsEvTerm tms
                                      ; return (Var df `mkTyApps` tys `mkApps` tms') }
 
 dsEvTerm (EvCoercion (TcCoVarCo v)) = return (Var v)  -- See Note [Simple coercions]
-dsEvTerm (EvCoercion co)            = dsTcCoercion Nominal co mkEqBox
+dsEvTerm (EvCoercion co)            = dsTcCoercion co mkEqBox
 
 dsEvTerm (EvTupleSel v n)
    = do { tm' <- dsEvTerm v
@@ -793,7 +792,7 @@ dsEvTerm (EvLit l) =
     EvStr s -> mkStringExprFS s
 
 ---------------------------------------
-dsTcCoercion :: Role -> TcCoercion -> (Coercion -> CoreExpr) -> DsM CoreExpr
+dsTcCoercion :: TcCoercion -> (Coercion -> CoreExpr) -> DsM CoreExpr
 -- This is the crucial function that moves 
 -- from TcCoercions to Coercions; see Note [TcCoercions] in Coercion
 -- e.g.  dsTcCoercion (trans g1 g2) k
@@ -808,7 +807,7 @@ dsTcCoercion co thing_inside
                                            (uniqsFromSupply us)
 
              subst = mkCvSubst emptyInScopeSet [(eqv, mkCoVarCo cov) | (eqv, cov) <- eqvs_covs]
-             result_expr = thing_inside (ds_tc_coercion subst role co)
+             result_expr = thing_inside (ds_tc_coercion subst co)
              result_ty   = exprType result_expr
 
        ; return (foldr (wrap_in_case result_ty) result_expr eqvs_covs) }
@@ -833,8 +832,8 @@ ds_tc_coercion :: CvSubst -> TcCoercion -> Coercion
 --                 the result is of type (a ~# b)  (reps.  a ~# b)
 -- The VarEnv maps EqVars of type (a ~ b) to Coercions of type (a ~# b) (resp. and so on)
 -- No need for InScope set etc because the 
-ds_tc_coercion subst role tc_co
-  = go role tc_co
+ds_tc_coercion subst tc_co
+  = go tc_co
   where
     go (TcRefl r ty)            = Refl r (Coercion.substTy subst ty)
     go (TcTyConAppCo r tc cos)  = mkTyConAppCo r tc (map go cos)
@@ -867,9 +866,9 @@ ds_tc_coercion subst role tc_co
     ds_scc _ (CyclicSCC other) = pprPanic "ds_scc:cyclic" (ppr other $$ ppr tc_co)
 
     ds_co_term :: CvSubst -> EvTerm -> Coercion
-    ds_co_term subst (EvCoercion tc_co) = ds_tc_coercion subst Nominal tc_co
+    ds_co_term subst (EvCoercion tc_co) = ds_tc_coercion subst tc_co
     ds_co_term subst (EvId v)           = ds_ev_id subst v
-    ds_co_term subst (EvCast tm co)     = mkCoCast (ds_co_term subst tm) (ds_tc_coercion subst Nominal co)
+    ds_co_term subst (EvCast tm co)     = mkCoCast (ds_co_term subst tm) (ds_tc_coercion subst co)
     ds_co_term _ other = pprPanic "ds_co_term" (ppr other $$ ppr tc_co)
 
     ds_ev_id :: CvSubst -> EqVar -> Coercion

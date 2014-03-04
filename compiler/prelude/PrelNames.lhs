@@ -368,7 +368,6 @@ gHC_PRIM, gHC_TYPES, gHC_GENERICS, gHC_MAGIC, gHC_COERCIBLE,
     cONTROL_EXCEPTION_BASE, gHC_TYPELITS, gHC_IP :: Module
 
 gHC_PRIM        = mkPrimModule (fsLit "GHC.Prim")   -- Primitive types and values
-gHC_PRIMWRAPPERS = mkPrimModule (fsLit "GHC.PrimWrappers")
 gHC_TYPES       = mkPrimModule (fsLit "GHC.Types")
 gHC_MAGIC       = mkPrimModule (fsLit "GHC.Magic")
 gHC_CSTRING     = mkPrimModule (fsLit "GHC.CString")

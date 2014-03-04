@@ -31,7 +31,6 @@ import StgCmmForeign    (emitPrimCall)
 import MkGraph
 import CoreSyn          ( AltCon(..) )
 import SMRep
-import BlockId
 import Cmm
 import CmmInfo
 import CmmUtils

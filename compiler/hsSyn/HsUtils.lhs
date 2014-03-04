@@ -283,7 +283,7 @@ mkHsString s = HsString (mkFastString s)
 -------------
 userHsTyVarBndrs :: SrcSpan -> [name] -> [Located (HsTyVarBndr name)]
 -- Caller sets location
-userHsTyVarBndrs loc bndrs = [ L loc (HsTyVarBndr v Nothing Nothing) | v <- bndrs ]
+userHsTyVarBndrs loc bndrs = [ L loc (UserTyVar v) | v <- bndrs ]
 \end{code}
 
 

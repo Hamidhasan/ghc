@@ -2983,8 +2983,6 @@ optLevelFlags
 
     , ([0,1,2],     Opt_DmdTxDictSel)
 
-    , ([0,1,2],     Opt_DmdTxDictSel)
-
 --     , ([2],     Opt_StaticArgumentTransformation)
 -- Max writes: I think it's probably best not to enable SAT with -O2 for the
 -- 6.10 release. The version of SAT in HEAD at the moment doesn't incorporate

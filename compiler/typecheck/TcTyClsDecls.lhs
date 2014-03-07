@@ -385,12 +385,12 @@ getInitialKind decl@(DataDecl { tcdLName = L _ name
                                 , tcdTyVars = ktvs
                                 , tcdDataDefn = HsDataDefn { dd_kindSig = m_sig
                                                            , dd_cons = cons } })
-  = do { (decl_kind, num_extra_tvs) <-
+  = do { (decl_kind, _) <-
            kcHsTyVarBndrs (kcStrategy decl) ktvs $
            do { res_k <- case m_sig of
                            Just ksig -> tcLHsKind ksig
                            Nothing   -> return liftedTypeKind
-              ; return (res_k, ())}
+              ; return (res_k, ()) }
        ; let main_pr = (name, AThing decl_kind)
              inner_prs = [ (unLoc (con_name con), APromotionErr RecDataConPE)
                          | L _ con <- cons ]
@@ -517,7 +517,7 @@ kcConDecl (ConDecl { con_name = name, con_qvars = ex_tvs
     do { _ <- kcHsTyVarBndrs ParametricKinds ex_tvs $
               do { _ <- tcHsContext ex_ctxt
                  ; mapM_ (tcHsOpenType . getBangType) (hsConDeclArgTys details)
-                 ; _ <- tcConRes tc_name res
+                 ; _ <- tcConRes res
                  ; return (panic "kcConDecl", ()) }
        ; return () }
 \end{code}
@@ -1148,7 +1148,7 @@ tcConDecl new_or_data rep_tycon tmpl_tvs res_tmpl        -- Data types
            <- tcHsTyVarBndrs hs_tvs $ \ _ ->
               do { ctxt    <- tcHsContext hs_ctxt
                  ; details <- tcConArgs new_or_data hs_details
-                 ; res_ty  <- tcConRes tc_name hs_res_ty
+                 ; res_ty  <- tcConRes hs_res_ty
                  ; let (is_infix, field_lbls, btys) = details
                        (arg_tys, stricts)           = unzip btys
                  ; return (ctxt, arg_tys, res_ty, is_infix, field_lbls, stricts) }
@@ -1374,7 +1374,7 @@ checkValidTyCl thing
 checkValidTyCon :: TyCon -> TcM ()
 checkValidTyCon tc
   | Just cl <- tyConClass_maybe tc
-  = do checkValidClass cl
+  = checkValidClass cl
 
   | Just syn_rhs <- synTyConRhs_maybe tc
   = case syn_rhs of
@@ -2083,11 +2083,12 @@ recClsErr cycles
   = addErr (sep [ptext (sLit "Cycle in class declaration (via superclasses):"),
                  nest 2 (hsep (intersperse (text "->") (map ppr cycles)))])
 
-badDataConTyCon :: Name -> Name -> LHsType Name -> SDoc
-badDataConTyCon data_con tc actual_res_ty
+
+badDataConTyCon :: DataCon -> Type -> Type -> SDoc
+badDataConTyCon data_con res_ty_tmpl actual_res_ty
   = hang (ptext (sLit "Data constructor") <+> quotes (ppr data_con) <+>
                 ptext (sLit "returns type") <+> quotes (ppr actual_res_ty))
-       2 (ptext (sLit "instead of an instance of its parent type") <+> quotes (ppr tc))
+       2 (ptext (sLit "instead of an instance of its parent type") <+> quotes (ppr res_ty_tmpl))
 
 badGadtKindCon :: DataCon -> SDoc
 badGadtKindCon data_con

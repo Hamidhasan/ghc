@@ -1095,6 +1095,7 @@ kcScopedKindVars kv_ns thing_inside
 kcHsTyVarBndrs :: KindCheckingStrategy
                -> LHsTyVarBndrs Name 
 	       -> TcM (Kind, r)   -- the result kind, possibly with other info
+               -> TcM (Kind, r)
 -- Used in getInitialKind
 kcHsTyVarBndrs strat (HsQTvs { hsq_kvs = kv_ns, hsq_tvs = hs_tvs }) thing_inside
   = do { kvs <- if skolem_kvs
@@ -1263,6 +1264,7 @@ kcTyClTyVars name (HsQTvs { hsq_kvs = kvs, hsq_tvs = hs_tvs }) thing_inside
     -- variables, but tiresomely we need to check them *again* 
     -- to match the kind variables they mention against the ones 
     -- we've freshly brought into scope
+    kc_tv :: LHsTyVarBndr Name -> Kind -> TcM (Name, Kind)
     kc_tv (L _ (UserTyVar n)) exp_k 
       = return (n, exp_k)
     kc_tv (L _ (KindedTyVar n hs_k)) exp_k

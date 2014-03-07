@@ -830,7 +830,7 @@ as if there was an "import qualified M" declaration for every
 module.
 
 If we fail we just return Nothing, rather than bleating
-about "attempting to use module ‛D’ (./D.hs) which is not loaded"
+about "attempting to use module ‘D’ (./D.hs) which is not loaded"
 which is what loadSrcInterface does.
 
 Note [Safe Haskell and GHCi]
@@ -1103,7 +1103,7 @@ type MiniFixityEnv = FastStringEnv (Located Fixity)
 
 addLocalFixities :: MiniFixityEnv -> [Name] -> RnM a -> RnM a
 addLocalFixities mini_fix_env names thing_inside
-  = extendFixityEnv (mapCatMaybes find_fixity names) thing_inside
+  = extendFixityEnv (mapMaybe find_fixity names) thing_inside
   where
     find_fixity name
       = case lookupFsEnv mini_fix_env (occNameFS occ) of

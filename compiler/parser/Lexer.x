@@ -379,14 +379,14 @@ $tab+         { warn Opt_WarnTabs (text "Tab character") }
   @qual @varid                  { idtoken qvarid }
   @qual @conid                  { idtoken qconid }
   @varid                        { varid }
-  @conid                        { conid }
+  @conid                        { idtoken conid }
 }
 
 <0> {
   @qual @varid "#"+ / { ifExtension magicHashEnabled } { idtoken qvarid }
   @qual @conid "#"+ / { ifExtension magicHashEnabled } { idtoken qconid }
   @varid "#"+       / { ifExtension magicHashEnabled } { varid }
-  @conid "#"+       / { ifExtension magicHashEnabled } { conid }
+  @conid "#"+       / { ifExtension magicHashEnabled } { idtoken conid }
 }
 
 -- ToDo: - move `var` and (sym) into lexical syntax?
@@ -1072,20 +1072,8 @@ varid span buf len =
   where
     !fs = lexemeToFastString buf len
 
-conid :: Action
-conid span buf len =
-  case lookupUFM reservedUpcaseWordsFM fs of
-    Just (keyword, 0) -> return $ L span keyword
-
-    Just (keyword, exts) -> do
-      extsEnabled <- extension $ \i -> exts .&. i /= 0
-      if extsEnabled
-        then return $ L span keyword
-        else return $ L span $ ITconid fs
-
-    Nothing -> return $ L span $ ITconid fs
-  where
-    !fs = lexemeToFastString buf len
+conid :: StringBuffer -> Int -> Token
+conid buf len = ITconid $! lexemeToFastString buf len
 
 qvarsym, qconsym, prefixqvarsym, prefixqconsym :: StringBuffer -> Int -> Token
 qvarsym buf len = ITqvarsym $! splitQualName buf len False

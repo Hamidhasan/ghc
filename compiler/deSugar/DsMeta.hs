@@ -307,7 +307,7 @@ mk_extra_tvs :: Located Name -> LHsTyVarBndrs Name
 --    k1 -> .. -> kn -> *
 -- Return type variables [tv1:k1, tv2:k2, .., tvn:kn]
 mk_extra_tvs tc tvs defn
-  | HsDataDefn { dd_kindSig = hs_kind } <- defn
+  | HsDataDefn { dd_kindSig = Just hs_kind } <- defn
   = do { extra_tvs <- go hs_kind
        ; return (tvs { hsq_tvs = hsq_tvs tvs ++ extra_tvs }) }
   | otherwise

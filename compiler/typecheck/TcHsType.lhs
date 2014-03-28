@@ -1920,7 +1920,7 @@ tcInstTyVarsWithApps ((L _ (ETypeApp Unknown)):etys) (tv:tvs) (tctyvars, etyORva
 tcInstTyVarsWithApps e@((L _ (ETypeApp (ExplicitTy hsType Nothing))):etys) (tv:tvs) (tctyvars, etyORvars, subst, remArgs) =
   if (isTypeVar tv) then 
     do { etype <- tcCheckLHsType hsType (substTy subst (tyVarKind tv)) -- need to subst so it can unify with kv
-       ; tcInstTyVarsWithApps (etys) (tvs)
+       ; tcInstTyVarsWithApps etys tvs
          (tctyvars, etype:etyORvars, (extendTvSubst subst tv etype), remArgs) }
   else
     do { (subst', kv') <- tcInstTyVarX subst tv -- If this is not a tv - it's a kv. instantiate regularly
@@ -1937,7 +1937,7 @@ tcInstTyVarsWithApps e@((L _ (ETypeApp (ExplicitTy _ (Just etype)))):etys) (tv:t
 -- Kindchecking would involve simply adding a few new cases here, and inverting the
 -- if-statements above.
 
--- 5.
+-- 5. TODO: make the error message a little better. for example, if expecting 0, don't say "extra"
 tcInstTyVarsWithApps (((L _ (ETypeApp ety)):_)) [] (tctyvars, etyORvars, subst, remArgs) =
   do { addErrTc $ text "Provided an extra explicit type, " <+> (quotes $ ppr ety) <> char ',' $$
        text "which was not substituted, as there were no type variables remaining."

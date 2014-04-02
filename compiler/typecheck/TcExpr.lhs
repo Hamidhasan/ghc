@@ -901,11 +901,11 @@ tcApp (L loc (HsVar fun)) args res_ty
   | fun `hasKey` seqIdKey
   , [arg1,arg2] <- args
   = tcSeq loc fun arg1 arg2 res_ty
-
+{-|
 tcApp fun args res_ty
   = do  {   -- Type-check the function
         ; (fun1, fun_tau) <- tcInferFun fun
-
+        
             -- Extract its argument types
         ; (co_fun, expected_arg_tys, actual_res_ty)
               <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
@@ -918,6 +918,38 @@ tcApp fun args res_ty
 
         -- Typecheck the arguments
         ; args1 <- tcArgs fun args expected_arg_tys
+
+        -- Assemble the result
+        ; let fun2 = mkLHsWrapCo co_fun fun1
+              app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 args1)
+
+        ; return (unLoc app) }
+
+tcAppNew :: LHsExpr Name -> [LHsExpr Name]
+         -> TcRhoType -> TcM (HsExpr TcId)
+|-}
+tcApp fun args res_ty
+  = do  {   -- Type-check the function
+        ; (fun1, fun_tau) <- tcInferFunNew fun
+
+        ; (co_fun, expected_arg_tys1, _)
+          <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
+             
+        -- Typecheck the arguments
+        ; argsNew <- tcArgs fun args expected_arg_tys1
+
+            -- Extract its argument types
+        ; (co_fun, expected_arg_tys, actual_res_ty)
+              <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
+
+        -- Typecheck the result, thereby propagating
+        -- info (if any) from result into the argument types
+        -- Both actual_res_ty and res_ty are deeply skolemised
+        ; co_res <- addErrCtxtM (funResCtxt True (unLoc fun) actual_res_ty res_ty) $
+                    unifyType actual_res_ty res_ty
+
+        -- Typecheck the arguments            
+        ; args1 <- tcArgs fun args expected_arg_tys1
 
         -- Assemble the result
         ; let fun2 = mkLHsWrapCo co_fun fun1
@@ -953,17 +985,41 @@ tcInferFun :: LHsExpr Name -> TcM (LHsExpr TcId, TcRhoType)
 tcInferFun (L loc (HsVar name))
   = do { (fun, ty) <- setSrcSpan loc (tcInferId name)
                -- Don't wrap a context around a plain Id
+       ;  _ <- warnTc True $ text "DEBUG Hamidhasan: named: fun:"<+> ppr fun <+> text "fun_ty:" <+> ppr ty <+> text "name:" <+> ppr name
        ; return (L loc fun, ty) }
 
 tcInferFun fun
   = do { (fun, fun_ty) <- tcInfer (tcMonoExpr fun)
-
+       
          -- Zonk the function type carefully, to expose any polymorphism
          -- E.g. (( \(x::forall a. a->a). blah ) e)
          -- We can see the rank-2 type of the lambda in time to genrealise e
        ; fun_ty' <- zonkTcType fun_ty
 
        ; (wrap, rho) <- deeplyInstantiate AppOrigin fun_ty'
+       ; _ <- warnTc True $ text "DEBUG Hamidhasan: unnamed: fun:"<+> ppr fun <+> text "fun_ty:" <+> ppr fun_ty $+$ text "fun_ty':" <+> ppr fun_ty' <+> text "rho:" <+> ppr rho                 
+       ; return (mkLHsWrap wrap fun, rho) }
+
+----------------
+tcInferFunNew :: LHsExpr Name -> TcM (LHsExpr TcId, TcRhoType)
+-- Infer and instantiate the type of a function
+tcInferFunNew (L loc (HsVar name))
+  = do { (fun, ty) <- setSrcSpan loc (tcInferId name)
+               -- Don't wrap a context around a plain Id
+       ;  _ <- warnTc True $ text "DEBUG Hamidhasan: named: fun:"<+> ppr fun <+> text "fun_ty:" <+> ppr ty <+> text "name:" <+> ppr name
+       ; return (L loc fun, ty) }
+
+-- This is used for lambdas
+tcInferFunNew fun
+  = do { (fun, fun_ty) <- tcInfer (tcMonoExpr fun)
+       
+         -- Zonk the function type carefully, to expose any polymorphism
+         -- E.g. (( \(x::forall a. a->a). blah ) e)
+         -- We can see the rank-2 type of the lambda in time to genrealise e
+       ; fun_ty' <- zonkTcType fun_ty
+
+       ; (wrap, rho) <- deeplyInstantiate AppOrigin fun_ty'
+       ; _ <- warnTc True $ text "DEBUG Hamidhasan: unnamed: fun:"<+> ppr fun <+> text "fun_ty:" <+> ppr fun_ty $+$ text "fun_ty':" <+> ppr fun_ty' <+> text "rho:" <+> ppr rho                 
        ; return (mkLHsWrap wrap fun, rho) }
 
 ----------------
@@ -1052,6 +1108,10 @@ tcInferId :: Name -> TcM (HsExpr TcId, TcRhoType)
 -- Infer type, and deeply instantiate
 tcInferId n = tcInferIdWithOrig (OccurrenceOf n) n
 
+tcInferIdNew :: Name -> TcM (HsExpr TcId, TcRhoType)
+-- Infer type, and deeply instantiate
+tcInferIdNew n = tcInferIdWithOrigNew (OccurrenceOf n) n
+
 ------------------------
 tcInferIdWithOrig :: CtOrigin -> Name -> TcM (HsExpr TcId, TcRhoType)
 -- Look up an occurrence of an Id, and instantiate it (deeply)
@@ -1093,6 +1153,47 @@ tcInferIdWithOrig orig id_name
       | isNaughtyRecordSelector id = failWithTc (naughtyRecordSel id)
       | otherwise                  = return ()
 
+tcInferIdWithOrigNew :: CtOrigin -> Name -> TcM (HsExpr TcId, TcRhoType)
+-- Look up an occurrence of an Id, and instantiate it (deeply)
+
+tcInferIdWithOrigNew orig id_name
+  = do { id <- lookup_id
+       ; return ((HsVar id), idType id) }
+       --; (id_expr, id_rho) <- instantiateOuter orig id
+       --; (wrap, rho) <- deeplyInstantiate orig id_rho
+       --; return (mkHsWrap wrap id_expr, rho) }
+  where
+    lookup_id :: TcM TcId
+    lookup_id
+       = do { thing <- tcLookup id_name
+            ; case thing of
+                 ATcId { tct_id = id }
+                   -> do { check_naughty id        -- Note [Local record selectors]
+                         ; checkThLocalId id
+                         ; return id }
+
+                 AGlobal (AnId id)
+                   -> do { check_naughty id; return id }
+                        -- A global cannot possibly be ill-staged
+                        -- nor does it need the 'lifting' treatment
+                        -- hence no checkTh stuff here
+
+                 AGlobal (AConLike cl) -> case cl of
+                     RealDataCon con -> return (dataConWrapId con)
+                     PatSynCon ps -> case patSynWrapper ps of
+                         Nothing -> failWithTc (bad_patsyn ps)
+                         Just id -> return id
+
+                 other -> failWithTc (bad_lookup other) }
+
+    bad_lookup thing = ppr thing <+> ptext (sLit "used where a value identifer was expected")
+
+    bad_patsyn name = ppr name <+>  ptext (sLit "used in an expression, but it's a non-bidirectional pattern synonym")
+
+    check_naughty id
+      | isNaughtyRecordSelector id = failWithTc (naughtyRecordSel id)
+      | otherwise                  = return ()
+    
 ------------------------
 instantiateOuter :: CtOrigin -> TcId -> TcM (HsExpr TcId, TcSigmaType)
 -- Do just the first level of instantiation of an Id

@@ -1,0 +1,128 @@
+Unexpected results from:
+TEST="T5313 T7970 T7919 T5321FD T5030 T4801 T6048 T5631 T5837 T5642 T3064 parsing001 T1969 T5321Fun T783 T3294 T7734 andy_cherry T7848 T8083 space_leak_001"
+
+OVERALL SUMMARY for test run started at Sat Aug  3 17:44:25 EDT 2013
+    3693 total tests, which gave rise to
+   12282 test cases, of which
+    2352 were skipped
+
+     122 had missing libraries
+    9648 expected passes
+     121 expected failures
+
+       3 caused framework failures
+       2 unexpected passes
+      34 unexpected failures
+
+Unexpected passes:
+   driver  T5313 (ghci,dyn)
+
+Unexpected failures:
+   concurrent/should_run  T7970 [bad stdout] (normal,hpc,optasm,threaded1,threaded2,dyn)
+   concurrent/should_run  T7970 [bad stdout or stderr] (ghci)
+   ffi/should_run         T8083 [bad exit code] (optasm,threaded2,dyn)
+   parser/should_fail     T7848 [stderr mismatch] (normal)
+   perf/compiler          T1969 [stat not good enough] (normal)
+   perf/compiler          T3064 [stat not good enough] (normal)
+   perf/compiler          T3294 [stat not good enough] (normal)
+   perf/compiler          T4801 [stat not good enough] (normal)
+   perf/compiler          T5030 [stat not good enough] (normal)
+   perf/compiler          T5321FD [stat not good enough] (normal)
+   perf/compiler          T5321Fun [stat not good enough] (normal)
+   perf/compiler          T5631 [stat not good enough] (normal)
+   perf/compiler          T5642 [stat not good enough] (normal)
+   perf/compiler          T5837 [stat not good enough] (normal)
+   perf/compiler          T6048 [stat not good enough] (optasm)
+   perf/compiler          T783 [stat not good enough] (normal)
+   perf/compiler          parsing001 [stat not good enough] (normal)
+   perf/space_leaks       space_leak_001 [stat too good] (hpc,optasm,dyn)
+   programs/andy_cherry   andy_cherry [bad exit code] (hpc)
+   rts                    T7919 [exit code non-0] (normal,hpc,optasm,threaded1,threaded2)
+   typecheck/should_fail  T7734 [stderr mismatch] (normal)
+
+------------------------------------------------------
+
+Unexpected results from:
+TEST="T5313 T7970 concprog001 andy_cherry Check04 Check03 Check02 Check01 T4437 T5321FD T5030 T4801 T6048 T5631 T5837 T5642 T3064 parsing001 T1969 T5321Fun T783 T3294 rnfail016 T7919 ghci058 T8083 space_leak_001"
+
+OVERALL SUMMARY for test run started at Tue Sep  3 01:37:55 EDT 2013
+    3693 total tests, which gave rise to
+   12282 test cases, of which
+    2352 were skipped
+
+     122 had missing libraries
+    9642 expected passes
+     121 expected failures
+
+       3 caused framework failures
+       2 unexpected passes
+      40 unexpected failures
+
+Unexpected passes:
+   driver  T5313 (ghci,dyn)
+
+Unexpected failures:
+   concurrent/prog001     concprog001 [bad stderr] (threaded2)
+   concurrent/should_run  T7970 [bad stdout] (normal,hpc,optasm,threaded1,threaded2,dyn)
+   concurrent/should_run  T7970 [bad stdout or stderr] (ghci)
+   driver                 T4437 [bad stdout] (normal)
+   ffi/should_run         T8083 [bad exit code] (optasm,threaded2,dyn)
+   ghci/scripts           ghci058 [bad stdout] (ghci)
+   perf/compiler          T1969 [stat not good enough] (normal)
+   perf/compiler          T3064 [stat not good enough] (normal)
+   perf/compiler          T3294 [stat not good enough] (normal)
+   perf/compiler          T4801 [stat not good enough] (normal)
+   perf/compiler          T5030 [stat not good enough] (normal)
+   perf/compiler          T5321FD [stat not good enough] (normal)
+   perf/compiler          T5321Fun [stat not good enough] (normal)
+   perf/compiler          T5631 [stat not good enough] (normal)
+   perf/compiler          T5642 [stat not good enough] (normal)
+   perf/compiler          T5837 [stat not good enough] (normal)
+   perf/compiler          T6048 [stat not good enough] (optasm)
+   perf/compiler          T783 [stat not good enough] (normal)
+   perf/compiler          parsing001 [stat not good enough] (normal)
+   perf/space_leaks       space_leak_001 [stat too good] (hpc,optasm,dyn)
+   programs/andy_cherry   andy_cherry [bad exit code] (hpc)
+   rename/should_fail     rnfail016 [stderr mismatch] (normal)
+   rts                    T7919 [exit code non-0] (normal,hpc,optasm,threaded1,threaded2)
+   safeHaskell/check      Check01 [stderr mismatch] (normal)
+   safeHaskell/check      Check02 [stderr mismatch] (normal)
+   safeHaskell/check      Check03 [exit code non-0] (normal)
+   safeHaskell/check      Check04 [exit code non-0] (normal)
+
+----------------------------------------------------------------
+Unexpected results from:
+TEST="rnfail016 T4437 T5321FD T5030 T4801 T6048 T5631 T5837 T5642 T3064 parsing001 T1969 T5321Fun T783 T3294"
+
+OVERALL SUMMARY for test run started at Tue Sep  3 17:54:25 EDT 2013
+    3693 total tests, which gave rise to
+   12278 test cases, of which
+    8927 were skipped
+
+      26 had missing libraries
+    3249 expected passes
+      58 expected failures
+
+       3 caused framework failures
+       0 unexpected passes
+      15 unexpected failures
+
+Unexpected failures:
+   driver              T4437 [bad stdout] (normal)
+   perf/compiler       T1969 [stat not good enough] (normal)
+   perf/compiler       T3064 [stat not good enough] (normal)
+   perf/compiler       T3294 [stat not good enough] (normal)
+   perf/compiler       T4801 [stat not good enough] (normal)
+   perf/compiler       T5030 [stat not good enough] (normal)
+   perf/compiler       T5321FD [stat not good enough] (normal)
+   perf/compiler       T5321Fun [stat not good enough] (normal)
+   perf/compiler       T5631 [stat not good enough] (normal)
+   perf/compiler       T5642 [stat not good enough] (normal)
+   perf/compiler       T5837 [stat not good enough] (normal)
+   perf/compiler       T6048 [stat not good enough] (optasm)
+   perf/compiler       T783 [stat not good enough] (normal)
+   perf/compiler       parsing001 [stat not good enough] (normal)
+   rename/should_fail  rnfail016 [stderr mismatch] (normal)
+
+
+----- 

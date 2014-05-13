@@ -30,6 +30,7 @@ module TcUnify (
   matchExpectedTyConApp,
   matchExpectedAppTy, 
   matchExpectedFunTys,
+  matchExpectedFunTy,
   matchExpectedFunKind,
   wrapFunResCoercion
 
@@ -101,7 +102,7 @@ It's used wherever a language construct must have a functional type,
 namely:
 	A lambda expression
 	A function definition
-     An operator section
+        An operator section
 
 This is not (currently) where deep skolemisation occurs;
 matchExpectedFunTys does not skolmise nested foralls in the 
@@ -175,7 +176,75 @@ matchExpectedFunTys herald arity orig_ty
       = herald <+> speakNOf arity (ptext (sLit "argument")) <> comma $$ 
 	sep [ptext (sLit "but its type") <+> quotes (pprType ty), 
 	     if n_args == 0 then ptext (sLit "has none") 
+	     else ptext (sLit "has only") <+> speakN n_args,
+             text "orig_ty:" <+> ppr orig_ty]
+
+
+matchExpectedFunTy :: SDoc
+                   -> TcRhoType 
+                   -> TcM (TcCoercion, TcSigmaType)
+
+-- If    matchExpectFunTys n ty = (co, [t1,..,tn], ty_r)
+-- then  co : ty ~ (t1 -> ... -> tn -> ty_r)
+--
+-- Does not allocate unnecessary meta variables: if the input already is 
+-- a function, we just take it apart.  Not only is this efficient, 
+-- it's important for higher rank: the argument might be of form
+--		(forall a. ty) -> other
+-- If allocated (fresh-meta-var1 -> fresh-meta-var2) and unified, we'd
+-- hide the forall inside a meta-variable
+
+matchExpectedFunTy herald orig_ty 
+  = go orig_ty
+  where
+    -- If     go n ty = (co, [t1,..,tn], ty_r)
+    -- then   co : ty ~ t1 -> .. -> tn -> ty_r
+
+    go ty = return (mkTcNomReflCo ty, ty)
+    {-
+    go ty
+      | Just ty' <- tcView ty = go ty'
+{-
+    go (FunTy arg_ty res_ty)
+      | not (isPredTy arg_ty)
+      = do { (co, tys, ty_r) <- go res_ty
+           ; return (mkTcFunCo Nominal (mkTcNomReflCo arg_ty) co, arg_ty:tys, ty_r) }
+-}
+    go ty@(TyVarTy tv)
+      | ASSERT( isTcTyVar tv) isMetaTyVar tv
+      = do { cts <- readMetaTyVar tv
+	   ; case cts of
+	       Indirect ty' -> go ty'
+	       Flexi        -> defer ty }
+
+       -- In all other cases we bale out into ordinary unification
+       -- However unlike the meta-tyvar case, we are sure that the
+       -- number of arrows doesn't match up, so we can add a bit 
+       -- more context to the error message (cf Trac #7869)
+    go ty = addErrCtxtM mk_ctxt $
+                  defer ty
+
+    ------------
+    defer arg_ty 
+      = do { new_arg_ty  <- newFlexiTyVarTy openTypeKind
+                        -- See Note [Foralls to left of arrow]
+           ; co   <- unifyType arg_ty new_arg_ty
+           ; return (co, new_arg_ty) }
+
+    ------------
+    mk_ctxt :: TidyEnv -> TcM (TidyEnv, MsgDoc)
+    mk_ctxt env = do { orig_ty1 <- zonkTcType orig_ty
+                     ; let (env', orig_ty2) = tidyOpenType env orig_ty1
+                           (args, _) = tcSplitFunTys orig_ty2
+                           n_actual = length args
+                     ; return (env', mk_msg orig_ty2 n_actual) }
+
+    mk_msg ty n_args
+      = herald <+> speakNOf 1 (ptext (sLit "argument")) <> comma $$ 
+	sep [ptext (sLit "but its type") <+> quotes (pprType ty), 
+	     if n_args == 0 then ptext (sLit "has none") 
 	     else ptext (sLit "has only") <+> speakN n_args]
+-}
 \end{code}
 
 Note [Foralls to left of arrow]

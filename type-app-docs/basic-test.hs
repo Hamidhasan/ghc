@@ -7,9 +7,18 @@
 module Main where
 import Prelude
 
-addOne :: Int -> Int
-addOne x = x + 1
+addOne :: Int -> Bool
+addOne _ = True
 
+addTwo :: a -> Bool
+addTwo _ = True
+
+addFun :: Int -> Bool
+addFun x = addOne x
+                   
 main :: IO ()
 main = do
-         print (addOne 2)
+  print 5
+  print (addOne 7)
+  print (addTwo 2)
+  print $ addFun 5

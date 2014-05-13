@@ -15,7 +15,7 @@ The @Inst@ type: dictionaries or method instances
 
 module Inst ( 
        deeplySkolemise, 
-       deeplyInstantiate, instCall, instStupidTheta,
+       deeplyInstantiate, instCall, instStupidTheta, singleInstantiate,
        emitWanted, emitWanteds,
 
        newOverloadedLit, mkOverLit, 
@@ -184,6 +184,25 @@ deeplyInstantiate orig ty
                  mkFunTys arg_tys rho2) }
 
   | otherwise = return (idHsWrapper, ty)
+
+
+singleInstantiate :: CtOrigin -> TcSigmaType -> HsWrapper -> 
+                     TcM (HsWrapper, TcSigmaType, TvSubst)
+singleInstantiate orig ty wrap
+  | null tvs && null theta = return (wrap, ty, emptyTvSubst)
+                             
+  | otherwise = do
+    { (_, tys, subst) <- tcInstTyVars tvs
+    ; ids1  <- newSysLocalIds (fsLit "di") [(substTy subst tau)]
+    ; wrap1 <- instCall orig tys (substTheta subst theta)
+    ; return (mkWpLams ids1 <.>
+              wrap  <.>
+              wrap1 <.> mkWpEvVarApps ids1,
+              (substTy subst tau),
+              subst) }
+
+  
+  where (tvs, theta, tau) = tcSplitSigmaTy ty
 \end{code}
 
 

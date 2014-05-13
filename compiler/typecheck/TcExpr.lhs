@@ -901,12 +901,12 @@ tcApp (L loc (HsVar fun)) args res_ty
   | fun `hasKey` seqIdKey
   , [arg1,arg2] <- args
   = tcSeq loc fun arg1 arg2 res_ty
-{-|
+
 tcApp fun args res_ty
   = do  {   -- Type-check the function
         ; (fun1, fun_tau) <- tcInferFun fun
         
-            -- Extract its argument types
+            -- Extract its argument otypes
         ; (co_fun, expected_arg_tys, actual_res_ty)
               <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
 
@@ -915,7 +915,10 @@ tcApp fun args res_ty
         -- Both actual_res_ty and res_ty are deeply skolemised
         ; co_res <- addErrCtxtM (funResCtxt True (unLoc fun) actual_res_ty res_ty) $
                     unifyType actual_res_ty res_ty
-
+        ; _ <- failWithTc $ text "fun_tau:" <+> ppr fun_tau <+> text "co_fun:" <+> ppr co_fun <+> text "co_res:" <+> ppr co_res
+          $+$ text "expected_arg_tys" <+> ppr expected_arg_tys $+$ text "actual_res_ty:"
+          <+> ppr actual_res_ty <+> text "res_ty:" <+> ppr res_ty
+          
         -- Typecheck the arguments
         ; args1 <- tcArgs fun args expected_arg_tys
 
@@ -927,33 +930,35 @@ tcApp fun args res_ty
 
 tcAppNew :: LHsExpr Name -> [LHsExpr Name]
          -> TcRhoType -> TcM (HsExpr TcId)
-|-}
-tcApp fun args res_ty
+
+tcAppNew fun args res_ty
   = do  {   -- Type-check the function
-        ; (fun1, fun_tau) <- tcInferFunNew fun
-
-        ; (co_fun, expected_arg_tys1, _)
-          <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
-             
+        ; (fun1, fun_ty) <- tcInferFunNew fun
+                                     
+        -- Resulting args, wrapped fun, checked fun_ty, coercions, and exp_arg_tys
+        
+        ; (args1, fun2wrap, fun_ty', actual_res_ty, co_fun, _) <- tcArgsNew fun fun_ty args
+        
+        -- Extract its argument types
         -- Typecheck the arguments
-        ; argsNew <- tcArgs fun args expected_arg_tys1
 
-            -- Extract its argument types
-        ; (co_fun, expected_arg_tys, actual_res_ty)
-              <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
+        --; (co_fun, expected_arg_tys1, _)
+        --  <- matchExpectedFunTys (mk_app_msg fun) (length args) fun_tau
 
+       ; _ <- warnTc True $ text "got here, fun_ty:" <+> ppr fun_ty <+> text "co_fun:" <+> ppr co_fun $+$ text "res_ty:" <+> ppr res_ty <+> text "actual_res_ty:" <+> ppr actual_res_ty <+> text "fun_ty':" <+> ppr fun_ty' $+$ text "fun1:" <+> ppr fun1
+                                                                  
         -- Typecheck the result, thereby propagating
         -- info (if any) from result into the argument types
         -- Both actual_res_ty and res_ty are deeply skolemised
         ; co_res <- addErrCtxtM (funResCtxt True (unLoc fun) actual_res_ty res_ty) $
                     unifyType actual_res_ty res_ty
-
+                    
         -- Typecheck the arguments            
-        ; args1 <- tcArgs fun args expected_arg_tys1
+        --; args1 <- tcArgs fun args expected_arg_tys
 
         -- Assemble the result
-        ; let fun2 = mkLHsWrapCo co_fun fun1
-              app  = mkLHsWrapCo co_res (foldl mkHsApp fun2 args1)
+        ; let fun3 = mkLHsWrapCo co_fun (mkLHsWrap fun2wrap fun1)
+              app  = mkLHsWrapCo co_res (foldl mkHsApp fun3 args1)
 
         ; return (unLoc app) }
 
@@ -985,7 +990,6 @@ tcInferFun :: LHsExpr Name -> TcM (LHsExpr TcId, TcRhoType)
 tcInferFun (L loc (HsVar name))
   = do { (fun, ty) <- setSrcSpan loc (tcInferId name)
                -- Don't wrap a context around a plain Id
-       ;  _ <- warnTc True $ text "DEBUG Hamidhasan: named: fun:"<+> ppr fun <+> text "fun_ty:" <+> ppr ty <+> text "name:" <+> ppr name
        ; return (L loc fun, ty) }
 
 tcInferFun fun
@@ -997,17 +1001,16 @@ tcInferFun fun
        ; fun_ty' <- zonkTcType fun_ty
 
        ; (wrap, rho) <- deeplyInstantiate AppOrigin fun_ty'
-       ; _ <- warnTc True $ text "DEBUG Hamidhasan: unnamed: fun:"<+> ppr fun <+> text "fun_ty:" <+> ppr fun_ty $+$ text "fun_ty':" <+> ppr fun_ty' <+> text "rho:" <+> ppr rho                 
        ; return (mkLHsWrap wrap fun, rho) }
 
 ----------------
-tcInferFunNew :: LHsExpr Name -> TcM (LHsExpr TcId, TcRhoType)
+tcInferFunNew :: LHsExpr Name -> TcM (LHsExpr TcId, TcSigmaType)
 -- Infer and instantiate the type of a function
 tcInferFunNew (L loc (HsVar name))
-  = do { (fun, ty) <- setSrcSpan loc (tcInferId name)
+  = do { (id, ty) <-  (tcInferIdNew name)
                -- Don't wrap a context around a plain Id
-       ;  _ <- warnTc True $ text "DEBUG Hamidhasan: named: fun:"<+> ppr fun <+> text "fun_ty:" <+> ppr ty <+> text "name:" <+> ppr name
-       ; return (L loc fun, ty) }
+--       ;  _ <- warnTc True $ text "DEBUG Hamidhasan: named: id:"<+> ppr id <+> text "fun_ty:" <+> ppr ty <+> text "name:" <+> ppr name
+       ; return (L loc (HsVar id), ty) }
 
 -- This is used for lambdas
 tcInferFunNew fun
@@ -1017,10 +1020,11 @@ tcInferFunNew fun
          -- E.g. (( \(x::forall a. a->a). blah ) e)
          -- We can see the rank-2 type of the lambda in time to genrealise e
        ; fun_ty' <- zonkTcType fun_ty
-
-       ; (wrap, rho) <- deeplyInstantiate AppOrigin fun_ty'
-       ; _ <- warnTc True $ text "DEBUG Hamidhasan: unnamed: fun:"<+> ppr fun <+> text "fun_ty:" <+> ppr fun_ty $+$ text "fun_ty':" <+> ppr fun_ty' <+> text "rho:" <+> ppr rho                 
-       ; return (mkLHsWrap wrap fun, rho) }
+                    
+--       ; (wrap, rho) <- deeplyInstantiate AppOrigin fun_ty'
+--       ; _ <- warnTc True $ text "DEBUG Hamidhasan: unnamed: fun:"<+> ppr fun <+> text "fun_ty:" <+> ppr fun_ty $+$ text "fun_ty':" <+> ppr fun_ty' -- <+> text "rho:" <+> ppr rho             
+       --; failWithTc (text "don't know how to do lambdas yet") }
+       ; return (fun, fun_ty') }
 
 ----------------
 tcArgs :: LHsExpr Name                          -- The function (for error messages)
@@ -1030,6 +1034,110 @@ tcArgs :: LHsExpr Name                          -- The function (for error messa
 tcArgs fun args expected_arg_tys
   = mapM (tcArg fun) (zip3 args expected_arg_tys [1..])
 
+----------------
+tcArgsNew :: LHsExpr Name -> TcSigmaType
+           -> [LHsExpr Name]  -- Actual arguments
+           -> TcM ([LHsExpr TcId], HsWrapper, TcSigmaType, TcSigmaType, TcCoercion, [TcSigmaType])
+tcArgsNew fun@(L _ (HsVar name)) fun_tau args =
+  tc_args fun (OccurrenceOf name) fun_tau args
+
+tcArgsNew fun fun_tau args =
+  tc_args fun (AppOrigin) fun_tau args
+
+tc_args :: LHsExpr Name -> CtOrigin -> TcSigmaType        -- The function (for error messages)
+           -> [LHsExpr Name] --Actual arguments
+           -> TcM ([LHsExpr TcId], HsWrapper, TcSigmaType, TcSigmaType, TcCoercion, [TcSigmaType])
+           -- Resulting args, wrapped fun, checked fun_ty, coercions, and exp_arg_tys
+
+tc_args fun orig fun_ty (arg:args)
+  | null tvs && null theta
+    = do { (_, checked_args, wrap', full_ty, res_ty, coercions, exp_arg_tys, _) <- tcArgsNewGo fun orig (arg:args, [], idHsWrapper, fun_ty, fun_ty, [], [], 1)
+         ; let coercions' = foldr (\co' -> mkTcFunCo Nominal co') (mkTcNomReflCo fun_ty) coercions
+         ; return (checked_args, wrap', full_ty, res_ty, coercions', exp_arg_tys) }
+           
+  | otherwise -- general case: instantiate the first forall and move on
+    = do { --_ <- warnTc True $ text "Begin typechecking new args, fun:" <+> ppr fun <+>
+           --     text "tvs:" <+> ppr tvs $+$ text "theta:" <+> ppr theta <+> text "tau:" <+> ppr tau
+         ; case fun of
+           (L _ (HsVar name)) -> do
+             { (id, _) <- tcInferIdNew name
+             ; (_, tys, subst) <- tcInstTyVars tvs
+             ; doStupidChecks id tys
+             ; let theta' = substTheta subst theta
+             ; traceTc "Instantiating" (ppr id <+> text "with" <+> (ppr tys $$ ppr theta'))
+             ; wrap <- instCall orig tys theta'
+             ; let substed_ty = TcType.substTy subst tau
+             ; let maybe_ty = tcSplitFunTy_maybe substed_ty
+             ; case maybe_ty of
+               Just (arg_ty, rest_tys) -> do
+                 { (co, exp_arg_ty) <- matchExpectedFunTy (mk_app_msg fun) (arg_ty)
+                 ; checked_arg <- tcArg fun (arg, exp_arg_ty, 1)
+                 ; (_, checked_args, wrap', full_ty, res_ty, coercions, exp_arg_tys, _) <- tcArgsNewGo fun orig (args, [checked_arg], wrap, substed_ty, rest_tys, [co], [exp_arg_ty], 2)
+                 ; let coercions' = foldr (\co' -> mkTcFunCo Nominal co') (mkTcNomReflCo res_ty) coercions
+                 ; return (checked_args, wrap', full_ty, res_ty, coercions', exp_arg_tys) }
+
+               _ -> do
+                 { (_, checked_args, wrap', full_ty, res_ty, coercions, exp_arg_tys, _) <- tcArgsNewGo fun orig (args, [], wrap, substed_ty, substed_ty, [], [], 1) 
+                {- ; _ <- failWithTc $ text "Not supposed to get here - only one polymorphic argument? substed_ty:" $+$ ppr substed_ty <+> text "res_ty:" <+> ppr res_ty $+$
+                        -- $+$ text "checked_ty:" <+> ppr checked_ty <+> text "tau:" <+>
+                        text "tau:" <+> ppr tau $+$ text "tvs:" <+> ppr tvs <+> text "theta:"
+                        <+> ppr theta $+$ text "subst:" <+> ppr subst <+> text "theta'"
+                        <+> ppr theta' $+$ text "fun_ty:" <+> ppr fun_ty
+                        $+$ text "coercions:" <+> ppr coercions -- -}
+                 ; let coercions' = foldr (\co' -> mkTcFunCo Nominal co') (mkTcNomReflCo res_ty) coercions
+                 ; return (checked_args, wrap', full_ty, res_ty, coercions', exp_arg_tys) }
+             }
+                {-
+                    
+                  -}
+           _ -> do
+             { (_, checked_args, wrap', full_ty, res_ty, coercions, exp_arg_tys, _) <- tcArgsNewGo fun orig (arg:args, [], idHsWrapper, fun_ty, fun_ty, [], [], 1)
+             ; let coercions' = foldr (\co' -> mkTcFunCo Nominal co') (mkTcNomReflCo fun_ty) coercions
+             ; return (checked_args, wrap', full_ty, res_ty, coercions', exp_arg_tys) }
+         }
+  where
+    (tvs, theta, tau) = tcSplitSigmaTy fun_ty
+
+tc_args _ _ _ [] = failWithTc $ text "tc_args: no arguments provided."
+
+tcArgsNewGo :: LHsExpr Name -> CtOrigin
+            -> ([LHsExpr Name], [LHsExpr TcId], HsWrapper, TcSigmaType,
+                TcSigmaType, [TcCoercion], [TcSigmaType], Arity)
+            -- The arguments, that are being checked; the wrapped function; the full, instantiated type; the remaining type; expected_arg_tys; the number which we are currently on
+            -> TcM ([LHsExpr Name], [LHsExpr TcId], HsWrapper, TcSigmaType,
+                    TcSigmaType, [TcCoercion], [TcSigmaType], Arity)
+tcArgsNewGo fun orig (arg:args, checked_args, wrap, full_ty, fun_ty, cos, exp_arg_tys, arity) = do
+  { (new_wrap, fun_ty', subst) <- singleInstantiate orig fun_ty wrap
+-- ; failWithTc $ text "outcome of singleInstantiate: fun_ty:" <+> ppr fun_ty <+> text "fun_ty'"      <+> ppr fun_ty' <+> text "new_wrap:" <+> ppr new_wrap <+> text "full_ty:" <+> ppr full_ty
+  ; let maybe_ty = tcSplitFunTy_maybe fun_ty'
+  ; case maybe_ty of
+    Just (arg_ty,rest_tys) -> do
+      { (co, exp_arg_ty) <- matchExpectedFunTy (mk_app_msg fun) (arg_ty)
+{-      ; failWithTc $ text "fun_ty':" <+> ppr fun_ty' <+> text "arg_ty:" <+> ppr arg_ty <+>
+        text "exp_arg_ty:" <+> ppr exp_arg_ty <+> text "arg:" <+> ppr arg
+        $+$ text "co:" <+> ppr co -}
+      ; checked_arg <- tcArg fun (arg, exp_arg_ty, arity)
+      ; tcArgsNewGo fun orig (args, checked_arg:checked_args, new_wrap, substTy subst full_ty, rest_tys, co:cos, exp_arg_ty : exp_arg_tys, arity+1) }
+    _ -> do -- We don't have a fun type - we have a FORALL type here instead, or a
+      --singular type.
+      { 
+        --(co, exp_arg_ty) <- matchExpectedFunTy (mk_app_msg fun) (fun_ty')
+     --; _ <- failWithTc $ text "Main fun, not supposed to get here: case: fun_ty':" <+> ppr fun_ty' <+> text "arg:" <+> ppr arg -- <+> text "[Nothing case] exp_arg_ty:" <+> ppr exp_arg_ty
+      --; checked_arg <- tcArg fun (arg, exp_arg_ty, arity)
+      ; tcArgsNewGo fun orig (args, checked_args, new_wrap, substTy subst full_ty, fun_ty', cos, exp_arg_tys, arity) }
+        
+   }
+
+tcArgsNewGo fun _ ([], checked_args, wrap, full_ty, res_ty, cos, exp_arg_tys, arity) =
+ do --create an expected type for the res_ty
+   { (co, actual_res_ty) <- matchExpectedFunTy (mk_app_msg fun) res_ty 
+   ; return ([], reverse (checked_args), wrap, full_ty, actual_res_ty, co:cos, reverse exp_arg_tys, arity) }
+
+{-combine_coercions :: [TcCoercion] -> TcType -> TcCoercion
+combine_coercions (co:cos) ty = mkTcFunCo Nominal co (combine_coercions cos ty)
+combine_coercions [] ty = mkTcNomReflCo ty
+  -}
+  
 ----------------
 tcArg :: LHsExpr Name                           -- The function (for error messages)
        -> (LHsExpr Name, TcSigmaType, Int)      -- Actual argument and expected arg type
@@ -1108,7 +1216,7 @@ tcInferId :: Name -> TcM (HsExpr TcId, TcRhoType)
 -- Infer type, and deeply instantiate
 tcInferId n = tcInferIdWithOrig (OccurrenceOf n) n
 
-tcInferIdNew :: Name -> TcM (HsExpr TcId, TcRhoType)
+tcInferIdNew :: Name -> TcM (TcId, TcRhoType)
 -- Infer type, and deeply instantiate
 tcInferIdNew n = tcInferIdWithOrigNew (OccurrenceOf n) n
 
@@ -1153,12 +1261,12 @@ tcInferIdWithOrig orig id_name
       | isNaughtyRecordSelector id = failWithTc (naughtyRecordSel id)
       | otherwise                  = return ()
 
-tcInferIdWithOrigNew :: CtOrigin -> Name -> TcM (HsExpr TcId, TcRhoType)
+tcInferIdWithOrigNew :: CtOrigin -> Name -> TcM (TcId, TcSigmaType)
 -- Look up an occurrence of an Id, and instantiate it (deeply)
 
-tcInferIdWithOrigNew orig id_name
+tcInferIdWithOrigNew _ id_name
   = do { id <- lookup_id
-       ; return ((HsVar id), idType id) }
+       ; return (id, idType id) }
        --; (id_expr, id_rho) <- instantiateOuter orig id
        --; (wrap, rho) <- deeplyInstantiate orig id_rho
        --; return (mkHsWrap wrap id_expr, rho) }

@@ -901,7 +901,7 @@ tcApp (L loc (HsVar fun)) args res_ty
   | fun `hasKey` seqIdKey
   , [arg1,arg2] <- args
   = tcSeq loc fun arg1 arg2 res_ty
-
+{-
 tcApp fun args res_ty
   = do  {   -- Type-check the function
         ; (fun1, fun_tau) <- tcInferFun fun
@@ -930,8 +930,8 @@ tcApp fun args res_ty
 
 tcAppNew :: LHsExpr Name -> [LHsExpr Name]
          -> TcRhoType -> TcM (HsExpr TcId)
-
-tcAppNew fun args res_ty
+-}
+tcApp fun args res_ty
   = do  {   -- Type-check the function
         ; (fun1, fun_ty) <- tcInferFunNew fun
                                      
@@ -1124,7 +1124,7 @@ tcArgsNewGo fun orig (arg:args, checked_args, wrap, full_ty, fun_ty, cos, exp_ar
         --(co, exp_arg_ty) <- matchExpectedFunTy (mk_app_msg fun) (fun_ty')
      --; _ <- failWithTc $ text "Main fun, not supposed to get here: case: fun_ty':" <+> ppr fun_ty' <+> text "arg:" <+> ppr arg -- <+> text "[Nothing case] exp_arg_ty:" <+> ppr exp_arg_ty
       --; checked_arg <- tcArg fun (arg, exp_arg_ty, arity)
-      ; tcArgsNewGo fun orig (args, checked_args, new_wrap, substTy subst full_ty, fun_ty', cos, exp_arg_tys, arity) }
+      ; tcArgsNewGo fun orig (arg:args, checked_args, new_wrap, substTy subst full_ty, fun_ty', cos, exp_arg_tys, arity) }
         
    }
 
